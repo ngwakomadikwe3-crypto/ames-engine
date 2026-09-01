@@ -1,19 +1,23 @@
 import { Canvas } from '@react-three/fiber'
 import { ACESFilmicToneMapping, SRGBColorSpace } from 'three'
+import { DIAMOND_CALIBRATION } from '../calibration'
 import { ViewerScene } from './ViewerScene'
 
 export const DIAMOND_VIEWER_CAMERA = {
-  position: [0, 1.15, 5.4] as [number, number, number],
-  fov: 32,
-  near: 0.1,
-  far: 100,
+  position: [...DIAMOND_CALIBRATION.camera.position] as [number, number, number],
+  fov: DIAMOND_CALIBRATION.camera.fov,
+  near: DIAMOND_CALIBRATION.camera.near,
+  far: DIAMOND_CALIBRATION.camera.far,
 }
 
-export const DIAMOND_TONE_MAPPING_EXPOSURE = 0.9
+export const DIAMOND_TONE_MAPPING_EXPOSURE = DIAMOND_CALIBRATION.camera.exposure
 
-export interface JewelryViewerProps { className?: string }
+export interface JewelryViewerProps {
+  className?: string
+  diamondRotationY?: number
+}
 
-export function JewelryViewer({ className = '' }: JewelryViewerProps) {
+export function JewelryViewer({ className = '', diamondRotationY }: JewelryViewerProps) {
   const classes = ['jewelry-viewer', className].filter(Boolean).join(' ')
 
   return (
@@ -32,7 +36,7 @@ export function JewelryViewer({ className = '' }: JewelryViewerProps) {
         }}
         shadows
       >
-        <ViewerScene />
+        <ViewerScene diamondRotationY={diamondRotationY} />
       </Canvas>
     </section>
   )

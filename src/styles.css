@@ -20,6 +20,7 @@ body { min-width: 320px; }
 .jewelry-viewer { width: 100%; height: 100%; }
 .jewelry-viewer canvas { display: block; cursor: grab; }
 .jewelry-viewer canvas:active { cursor: grabbing; }
+.reference-diamond-canvas { display: block; width: 100%; height: 100%; }
 
 .brand-mark {
   position: absolute;

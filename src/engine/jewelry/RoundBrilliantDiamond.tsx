@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { CubeTexture } from 'three'
 import { DiamondMaterial } from '../materials'
+import { DIAMOND_CALIBRATION } from '../calibration'
 import { createRoundBrilliantGeometry } from './createRoundBrilliantGeometry'
 
 function useConstrainedDiamondProfile() {
@@ -19,14 +20,28 @@ function useConstrainedDiamondProfile() {
   return constrained
 }
 
-export function RoundBrilliantDiamond({ envMap }: { envMap: CubeTexture }) {
+export function RoundBrilliantDiamond({
+  envMap,
+  rotationY = DIAMOND_CALIBRATION.diamond.rotation[1],
+}: {
+  envMap: CubeTexture
+  rotationY?: number
+}) {
   const geometry = useMemo(() => createRoundBrilliantGeometry(), [])
   const constrained = useConstrainedDiamondProfile()
 
   useEffect(() => () => geometry.dispose(), [geometry])
 
   return (
-    <mesh geometry={geometry} rotation={[0, 0.28, 0]} scale={1.25}>
+    <mesh
+      geometry={geometry}
+      rotation={[
+        DIAMOND_CALIBRATION.diamond.rotation[0],
+        rotationY,
+        DIAMOND_CALIBRATION.diamond.rotation[2],
+      ]}
+      scale={DIAMOND_CALIBRATION.diamond.scale}
+    >
       <DiamondMaterial envMap={envMap} constrained={constrained} />
     </mesh>
   )
