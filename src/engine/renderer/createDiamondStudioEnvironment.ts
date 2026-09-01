@@ -1,26 +1,56 @@
 import { CubeTexture, SRGBColorSpace } from 'three'
 
+export const DIAMOND_STUDIO_PALETTE = {
+  highlight: '#ffffff',
+  warmHighlight: '#f7f2e8',
+  fill: '#747b84',
+  shadowFill: '#343a42',
+  flag: '#15191f',
+} as const
+
+type StudioCardRole = 'highlight' | 'flag'
+
+interface StudioCard {
+  face: number
+  role: StudioCardRole
+  x: number
+  y: number
+  width: number
+  height: number
+  color: string
+}
+
+export const DIAMOND_STUDIO_CARDS: readonly StudioCard[] = [
+  { face: 0, role: 'highlight', x: 26, y: 58, width: 142, height: 396, color: DIAMOND_STUDIO_PALETTE.highlight },
+  { face: 2, role: 'highlight', x: 156, y: 26, width: 228, height: 116, color: DIAMOND_STUDIO_PALETTE.warmHighlight },
+  { face: 4, role: 'highlight', x: 334, y: 72, width: 126, height: 366, color: DIAMOND_STUDIO_PALETTE.highlight },
+  { face: 1, role: 'flag', x: 218, y: 44, width: 54, height: 352, color: DIAMOND_STUDIO_PALETTE.flag },
+  { face: 3, role: 'flag', x: 78, y: 214, width: 286, height: 46, color: DIAMOND_STUDIO_PALETTE.flag },
+  { face: 5, role: 'flag', x: 382, y: 106, width: 42, height: 292, color: DIAMOND_STUDIO_PALETTE.flag },
+]
+
 function createFace(index: number) {
   const canvas = document.createElement('canvas')
   canvas.width = 512
   canvas.height = 512
   const context = canvas.getContext('2d')!
-  const gradient = context.createLinearGradient(0, 0, 512, 512)
-  gradient.addColorStop(0, index === 2 ? '#f8f8f6' : '#c9cdd1')
-  gradient.addColorStop(0.52, '#8f959c')
-  gradient.addColorStop(1, '#3f464e')
+  const gradient = context.createLinearGradient(
+    index % 2 === 0 ? 0 : 512,
+    0,
+    index % 2 === 0 ? 512 : 0,
+    512,
+  )
+  gradient.addColorStop(0, index === 2 ? '#d9dce0' : DIAMOND_STUDIO_PALETTE.fill)
+  gradient.addColorStop(0.5, index === 4 ? '#9298a0' : '#565d66')
+  gradient.addColorStop(1, DIAMOND_STUDIO_PALETTE.shadowFill)
   context.fillStyle = gradient
   context.fillRect(0, 0, 512, 512)
 
-  context.fillStyle = '#ffffff'
-  context.fillRect(42, 54, 116, 404)
-  context.fillRect(354, 28, 104, 456)
-  context.fillStyle = '#f4f1e9'
-  context.fillRect(174, 34, 164, 94)
-  context.fillStyle = '#d8dce0'
-  context.fillRect(176, 374, 170, 96)
-  context.fillStyle = index % 2 === 0 ? '#858b92' : '#92989f'
-  context.fillRect(240, 164, 32, 168)
+  for (const card of DIAMOND_STUDIO_CARDS) {
+    if (card.face !== index) continue
+    context.fillStyle = card.color
+    context.fillRect(card.x, card.y, card.width, card.height)
+  }
 
   return canvas
 }
