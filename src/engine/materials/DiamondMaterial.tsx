@@ -1,6 +1,6 @@
 import { MeshRefractionMaterial } from '@react-three/drei'
 import type { Texture } from 'three'
-import { getDiamondQualityProfile } from './diamondQuality'
+import { DIAMOND_MATERIAL, getDiamondQualityProfile } from './diamondQuality'
 
 interface DiamondMaterialProps {
   envMap: Texture
@@ -13,12 +13,12 @@ export function DiamondMaterial({ envMap, constrained }: DiamondMaterialProps) {
   return (
     <MeshRefractionMaterial
       envMap={envMap}
-      ior={2.417}
+      ior={DIAMOND_MATERIAL.ior}
       bounces={quality.bounces}
       fresnel={quality.fresnel}
       aberrationStrength={quality.aberrationStrength}
       fastChroma={quality.fastChroma}
-      color="white"
+      color={DIAMOND_MATERIAL.color}
       toneMapped
     />
   )
