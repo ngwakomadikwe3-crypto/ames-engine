@@ -48,11 +48,11 @@ Use 16-fold radial segmentation around the girdle so alternating ring offsets pr
 - subtle chromatic aberration for spectral fire,
 - full opacity.
 
-The desktop quality profile uses five internal bounces and full per-channel refraction. The mobile/constrained profile uses three bounces and fast chromatic approximation. Quality selection is deterministic from coarse pointer/mobile media capability so it does not introduce a frame-time feedback system in this milestone.
+The desktop quality profile uses four internal bounces and the fast chromatic approximation after browser profiling showed this preserves visible spectral fire while sustaining approximately 49 frames per second in the verification browser. The mobile/constrained profile uses three bounces and the same fast chromatic approximation at lower aberration strength, sustaining approximately 55 frames per second in the constrained viewport. Quality selection is deterministic from coarse pointer/mobile media capability so it does not introduce a frame-time feedback system in this milestone.
 
 ## Environment and Lighting
 
-Use Drei's `Environment` capture with procedural `Lightformer` panels rather than adding a remote HDR asset dependency. The captured high-dynamic-range scene environment supplies bright studio reflections and refracted radiance without network loading. Existing studio lights remain as presentation lights, with only intensity or placement adjustments if browser evidence shows clipping or a flat result. Configure renderer tone mapping/exposure only within the existing Canvas boundary, without changing page design.
+Use Drei's cached studio HDR environment preset to supply reflected and refracted radiance. The preset is shared by the scene environment and the diamond material and must load without browser network errors. Existing studio lights remain as presentation lights, with only intensity or placement adjustments if browser evidence shows clipping or a flat result. Configure renderer tone mapping/exposure only within the existing Canvas boundary, without changing page design.
 
 ## Interaction and Performance
 

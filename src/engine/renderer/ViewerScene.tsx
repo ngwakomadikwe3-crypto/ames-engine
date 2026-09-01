@@ -1,4 +1,6 @@
-import { TemporaryJewelry } from '../jewelry'
+import { Suspense } from 'react'
+import { RoundBrilliantDiamond } from '../jewelry'
+import { DiamondEnvironment } from './DiamondEnvironment'
 import { StudioLighting } from './StudioLighting'
 import { ViewerControls } from './ViewerControls'
 
@@ -7,7 +9,10 @@ export function ViewerScene() {
     <>
       <color attach="background" args={['#050506']} />
       <StudioLighting />
-      <TemporaryJewelry />
+      <Suspense fallback={null}>
+        <DiamondEnvironment />
+        <RoundBrilliantDiamond />
+      </Suspense>
       <ViewerControls />
     </>
   )

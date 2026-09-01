@@ -6,7 +6,7 @@ AMES Engine is a standalone 3D jewelry engine that will be embedded by the AMES 
 
 ## Current Milestone
 
-The repository currently contains foundation only: a modular web viewer, camera controls, studio lighting, and temporary proof geometry. Do not implement or imply a photorealistic diamond. Do not build the Boutique, Chatface, splash experience, CAD conversion, parametric tools, or production pipeline unless a future task explicitly requests them.
+The repository contains the standalone viewer foundation and Milestone 2 diamond research implementation: a procedural round-brilliant mesh, adaptive BVH-traced refraction material, HDR environment reflections, camera controls, and preserved temporary rollback geometry. The diamond milestone is rendering-only. Do not build the Boutique, Chatface, splash experience, CAD conversion, parametric tools, or production pipeline unless a future task explicitly requests them.
 
 ## Architecture Boundaries
 
