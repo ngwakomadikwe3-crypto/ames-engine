@@ -9,7 +9,7 @@ export const DIAMOND_VIEWER_CAMERA = {
   far: 100,
 }
 
-export const DIAMOND_TONE_MAPPING_EXPOSURE = 0.78
+export const DIAMOND_TONE_MAPPING_EXPOSURE = 0.9
 
 export interface JewelryViewerProps { className?: string }
 

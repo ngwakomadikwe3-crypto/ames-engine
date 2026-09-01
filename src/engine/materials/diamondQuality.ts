@@ -1,6 +1,6 @@
 export const DIAMOND_MATERIAL = {
   ior: 2.417,
-  color: '#dfe7ef',
+  color: '#ffffff',
 } as const
 
 export interface DiamondQualityProfile {

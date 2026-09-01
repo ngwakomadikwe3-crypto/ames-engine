@@ -6,7 +6,7 @@ import {
 
 describe('diamond macro viewer configuration', () => {
   test('uses highlight-preserving exposure and product camera framing', () => {
-    expect(DIAMOND_TONE_MAPPING_EXPOSURE).toBe(0.78)
+    expect(DIAMOND_TONE_MAPPING_EXPOSURE).toBe(0.9)
     expect(DIAMOND_VIEWER_CAMERA).toEqual({
       position: [0, 1.15, 5.4],
       fov: 32,

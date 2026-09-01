@@ -26,7 +26,7 @@ describe('diamond quality profile', () => {
   test('keeps a neutral crystalline material contract', () => {
     expect(DIAMOND_MATERIAL).toEqual({
       ior: 2.417,
-      color: '#dfe7ef',
+      color: '#ffffff',
     })
   })
 })

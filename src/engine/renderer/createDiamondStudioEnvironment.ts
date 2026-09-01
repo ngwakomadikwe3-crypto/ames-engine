@@ -3,9 +3,9 @@ import { CubeTexture, SRGBColorSpace } from 'three'
 export const DIAMOND_STUDIO_PALETTE = {
   highlight: '#ffffff',
   warmHighlight: '#f7f2e8',
-  fill: '#747b84',
-  shadowFill: '#343a42',
-  flag: '#15191f',
+  fill: '#969ca3',
+  shadowFill: '#59616a',
+  flag: '#20262d',
 } as const
 
 type StudioCardRole = 'highlight' | 'flag'
@@ -41,7 +41,7 @@ function createFace(index: number) {
     512,
   )
   gradient.addColorStop(0, index === 2 ? '#d9dce0' : DIAMOND_STUDIO_PALETTE.fill)
-  gradient.addColorStop(0.5, index === 4 ? '#9298a0' : '#565d66')
+  gradient.addColorStop(0.5, index === 4 ? '#b1b6bc' : '#7f868e')
   gradient.addColorStop(1, DIAMOND_STUDIO_PALETTE.shadowFill)
   context.fillStyle = gradient
   context.fillRect(0, 0, 512, 512)

@@ -9,9 +9,9 @@ describe('structured diamond studio environment', () => {
     expect(DIAMOND_STUDIO_PALETTE).toEqual({
       highlight: '#ffffff',
       warmHighlight: '#f7f2e8',
-      fill: '#747b84',
-      shadowFill: '#343a42',
-      flag: '#15191f',
+      fill: '#969ca3',
+      shadowFill: '#59616a',
+      flag: '#20262d',
     })
 
     expect(DIAMOND_STUDIO_CARDS.filter((card) => card.role === 'highlight')).toHaveLength(3)
