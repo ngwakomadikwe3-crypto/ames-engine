@@ -1,5 +1,9 @@
-import { useState } from 'react'
-import { DIAMOND_CALIBRATION } from '../engine/calibration'
+import { useEffect, useMemo, useState } from 'react'
+import { DIAMOND_CALIBRATION, createRealtimeCalibrationEnvironment } from '../engine/calibration'
+import {
+  createCanonicalRoundBrilliantGeometry,
+  getRoundBrilliantDiagnostics,
+} from '../engine/jewelry'
 import { ReferenceDiamondViewer } from '../engine/reference'
 import { JewelryViewer } from '../engine/renderer'
 
@@ -21,9 +25,67 @@ const labelStyle = {
   pointerEvents: 'none',
 } as const
 
+const diagnosticsStyle = {
+  position: 'absolute',
+  zIndex: 2,
+  top: 38,
+  left: 18,
+  margin: 0,
+  color: '#aeb5bc',
+  font: '9px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace',
+  pointerEvents: 'none',
+  whiteSpace: 'pre-wrap',
+} as const
+
+function Diagnostics({
+  renderer,
+  uuid,
+  fingerprint,
+  vertexCount,
+  triangleCount,
+  rotationY,
+  environmentUuid,
+}: {
+  renderer: string
+  uuid: string
+  fingerprint: string
+  vertexCount: number
+  triangleCount: number
+  rotationY: number
+  environmentUuid: string
+}) {
+  const { camera, diamond, environment } = DIAMOND_CALIBRATION
+  return (
+    <pre data-diagnostics={renderer} style={diagnosticsStyle}>
+      {[
+        `geometry uuid  ${uuid}`,
+        `fingerprint    ${fingerprint}`,
+        `vertices       ${vertexCount}`,
+        `triangles      ${triangleCount}`,
+        `camera         [${camera.position.join(', ')}]`,
+        `target         [${camera.target.join(', ')}]`,
+        `fov            ${camera.fov}`,
+        `rotation       [${diamond.rotation[0]}, ${rotationY.toFixed(6)}, ${diamond.rotation[2]}]`,
+        `scale          ${diamond.scale}`,
+        `exposure       ${camera.exposure}`,
+        `environment    ${environment.cards.length} canonical cards`,
+        `environment id ${environmentUuid}`,
+      ].join('\n')}
+    </pre>
+  )
+}
+
 export function DiamondComparisonHarness() {
   const [rotationIndex, setRotationIndex] = useState(0)
   const rotationY = DIAMOND_CALIBRATION.capture.rotations[rotationIndex]
+  const geometry = useMemo(() => createCanonicalRoundBrilliantGeometry(), [])
+  const environment = useMemo(() => createRealtimeCalibrationEnvironment(), [])
+  const diagnostics = useMemo(() => getRoundBrilliantDiagnostics(geometry), [geometry])
+
+  useEffect(() => () => {
+    geometry.dispose()
+    environment.dispose()
+  }, [environment, geometry])
 
   return (
     <main
@@ -40,14 +102,33 @@ export function DiamondComparisonHarness() {
     >
       <section data-renderer="realtime" style={panelStyle}>
         <span style={labelStyle}>REALTIME</span>
-        <JewelryViewer diamondRotationY={rotationY} />
+        <Diagnostics
+          renderer="realtime"
+          {...diagnostics}
+          rotationY={rotationY}
+          environmentUuid={environment.uuid}
+        />
+        <JewelryViewer
+          diamondRotationY={rotationY}
+          geometry={geometry}
+          environment={environment}
+          controlsEnabled={false}
+        />
       </section>
       <section data-renderer="reference" style={panelStyle}>
         <span style={labelStyle}>REFERENCE</span>
+        <Diagnostics
+          renderer="reference"
+          {...diagnostics}
+          rotationY={rotationY}
+          environmentUuid={environment.uuid}
+        />
         <ReferenceDiamondViewer
           key={rotationY}
           rotationY={rotationY}
           className="reference-diamond-canvas"
+          geometry={geometry}
+          environment={environment}
         />
       </section>
       <button

@@ -15,9 +15,10 @@ export const REFERENCE_DIAMOND_MATERIAL = Object.freeze({
 export const REFERENCE_RENDER_SETTINGS = Object.freeze({
   bounces: 12,
   transmissiveBounces: 16,
-  renderScale: 0.5,
+  renderScale: 1,
   minSamples: 1,
-  maxSamples: 32,
+  maxSamples: 128,
+  rasterizeScene: false,
   developmentOnly: true,
 })
 

@@ -9,9 +9,14 @@ import {
   Scene,
   SRGBColorSpace,
   WebGLRenderer,
+  type BufferGeometry,
+  type CubeTexture,
 } from 'three'
 import { DIAMOND_CALIBRATION, createReferenceCalibrationEnvironment } from '../calibration'
-import { createRoundBrilliantGeometry } from '../jewelry/createRoundBrilliantGeometry'
+import {
+  createCanonicalRoundBrilliantGeometry,
+  getRoundBrilliantDiagnostics,
+} from '../jewelry/canonicalRoundBrilliantGeometry'
 import {
   createReferenceDiamondMaterial,
   REFERENCE_RENDER_SETTINGS,
@@ -20,13 +25,18 @@ import {
 export interface ReferenceDiamondViewerProps {
   rotationY?: number
   className?: string
+  geometry?: BufferGeometry
+  environment?: CubeTexture
 }
 
 export function ReferenceDiamondViewer({
   rotationY = DIAMOND_CALIBRATION.diamond.rotation[1],
   className = '',
+  geometry: providedGeometry,
+  environment: providedEnvironment,
 }: ReferenceDiamondViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const diagnostics = providedGeometry ? getRoundBrilliantDiagnostics(providedGeometry) : undefined
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -39,7 +49,7 @@ export function ReferenceDiamondViewer({
 
     const scene = new Scene()
     scene.background = new Color(DIAMOND_CALIBRATION.background)
-    const environment = createReferenceCalibrationEnvironment()
+    const environment = providedEnvironment ?? createReferenceCalibrationEnvironment()
     scene.environment = environment
 
     const camera = new PerspectiveCamera(
@@ -51,7 +61,7 @@ export function ReferenceDiamondViewer({
     camera.position.set(...DIAMOND_CALIBRATION.camera.position)
     camera.lookAt(...DIAMOND_CALIBRATION.camera.target)
 
-    const geometry = createRoundBrilliantGeometry()
+    const geometry = providedGeometry ?? createCanonicalRoundBrilliantGeometry()
     const material = createReferenceDiamondMaterial()
     const diamond = new Mesh(geometry, material)
     diamond.scale.setScalar(DIAMOND_CALIBRATION.diamond.scale)
@@ -69,7 +79,9 @@ export function ReferenceDiamondViewer({
     pathTracer.transmissiveBounces = REFERENCE_RENDER_SETTINGS.transmissiveBounces
     pathTracer.renderScale = REFERENCE_RENDER_SETTINGS.renderScale
     pathTracer.minSamples = REFERENCE_RENDER_SETTINGS.minSamples
-    pathTracer.rasterizeScene = true
+    pathTracer.rasterizeScene = REFERENCE_RENDER_SETTINGS.rasterizeScene
+    pathTracer.fadeDuration = 0
+    pathTracer.renderDelay = 0
 
     let frame = 0
     let disposed = false
@@ -110,12 +122,21 @@ export function ReferenceDiamondViewer({
       observer.disconnect()
       pathTracer.dispose()
       bvhWorker.dispose()
-      geometry.dispose()
+      if (!providedGeometry) geometry.dispose()
       material.dispose()
-      environment.dispose()
+      if (!providedEnvironment) environment.dispose()
       renderer.dispose()
     }
-  }, [rotationY])
+  }, [providedEnvironment, providedGeometry, rotationY])
 
-  return <canvas ref={canvasRef} className={className} aria-label="AMES reference diamond renderer" />
+  return (
+    <canvas
+      ref={canvasRef}
+      className={className}
+      aria-label="AMES reference diamond renderer"
+      data-geometry-uuid={diagnostics?.uuid}
+      data-geometry-fingerprint={diagnostics?.fingerprint}
+      data-environment-uuid={providedEnvironment?.uuid}
+    />
+  )
 }

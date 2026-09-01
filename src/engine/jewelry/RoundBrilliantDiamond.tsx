@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { CubeTexture } from 'three'
+import type { BufferGeometry, CubeTexture } from 'three'
 import { DiamondMaterial } from '../materials'
 import { DIAMOND_CALIBRATION } from '../calibration'
-import { createRoundBrilliantGeometry } from './createRoundBrilliantGeometry'
+import { createCanonicalRoundBrilliantGeometry } from './canonicalRoundBrilliantGeometry'
 
 function useConstrainedDiamondProfile() {
   const query = '(pointer: coarse), (max-width: 700px)'
@@ -22,15 +22,18 @@ function useConstrainedDiamondProfile() {
 
 export function RoundBrilliantDiamond({
   envMap,
+  geometry: providedGeometry,
   rotationY = DIAMOND_CALIBRATION.diamond.rotation[1],
 }: {
   envMap: CubeTexture
+  geometry?: BufferGeometry
   rotationY?: number
 }) {
-  const geometry = useMemo(() => createRoundBrilliantGeometry(), [])
+  const generatedGeometry = useMemo(() => createCanonicalRoundBrilliantGeometry(), [])
+  const geometry = providedGeometry ?? generatedGeometry
   const constrained = useConstrainedDiamondProfile()
 
-  useEffect(() => () => geometry.dispose(), [geometry])
+  useEffect(() => () => generatedGeometry.dispose(), [generatedGeometry])
 
   return (
     <mesh
