@@ -2,6 +2,8 @@ import { expect, test } from 'vitest'
 
 import {
   createRoundBrilliantGeometry,
+  ROUND_BRILLIANT_FACET_GROUPS,
+  ROUND_BRILLIANT_PROPORTIONS,
   ROUND_BRILLIANT_TRIANGLE_COUNT,
 } from '../src/engine/jewelry'
 
@@ -11,7 +13,20 @@ test('creates a stable flat-faceted round-brilliant geometry', () => {
   const normals = geometry.getAttribute('normal')
 
   expect(geometry.index).toBeNull()
-  expect(ROUND_BRILLIANT_TRIANGLE_COUNT).toBe(144)
+  expect(ROUND_BRILLIANT_FACET_GROUPS).toEqual({
+    table: 1,
+    star: 8,
+    bezel: 8,
+    upperGirdle: 16,
+    pavilionMain: 8,
+    lowerGirdle: 16,
+  })
+  expect(Object.values(ROUND_BRILLIANT_FACET_GROUPS).reduce((a, b) => a + b, 0)).toBe(57)
+  expect(ROUND_BRILLIANT_PROPORTIONS.table).toBeCloseTo(0.56, 3)
+  expect(ROUND_BRILLIANT_PROPORTIONS.crownAngle).toBeCloseTo(34.5, 2)
+  expect(ROUND_BRILLIANT_PROPORTIONS.pavilionAngle).toBeCloseTo(40.75, 2)
+  expect(ROUND_BRILLIANT_PROPORTIONS.girdleThickness).toBeCloseTo(0.03, 3)
+  expect(ROUND_BRILLIANT_TRIANGLE_COUNT).toBeGreaterThanOrEqual(100)
   expect(positions.count / 3).toBe(ROUND_BRILLIANT_TRIANGLE_COUNT)
   expect(positions.count / 3).toBeGreaterThanOrEqual(100)
   expect(normals.count).toBe(positions.count)

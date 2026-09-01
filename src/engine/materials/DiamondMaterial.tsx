@@ -15,7 +15,7 @@ export function DiamondMaterial({ envMap, constrained }: DiamondMaterialProps) {
       envMap={envMap}
       ior={2.417}
       bounces={quality.bounces}
-      fresnel={1}
+      fresnel={quality.fresnel}
       aberrationStrength={quality.aberrationStrength}
       fastChroma={quality.fastChroma}
       color="white"

@@ -10,7 +10,7 @@ export function JewelryViewer({ className = '' }: JewelryViewerProps) {
   return (
     <section className={classes} role="region" aria-label="AMES Engine 3D jewelry viewer">
       <Canvas
-        camera={{ position: [0, 0.4, 5], fov: 38, near: 0.1, far: 100 }}
+        camera={{ position: [0, 1.35, 5], fov: 36, near: 0.1, far: 100 }}
         dpr={[1, 2]}
         gl={{
           antialias: true,

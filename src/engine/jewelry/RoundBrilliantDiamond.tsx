@@ -1,5 +1,5 @@
-import { useEnvironment } from '@react-three/drei'
 import { useEffect, useMemo, useState } from 'react'
+import type { CubeTexture } from 'three'
 import { DiamondMaterial } from '../materials'
 import { createRoundBrilliantGeometry } from './createRoundBrilliantGeometry'
 
@@ -19,15 +19,14 @@ function useConstrainedDiamondProfile() {
   return constrained
 }
 
-export function RoundBrilliantDiamond() {
+export function RoundBrilliantDiamond({ envMap }: { envMap: CubeTexture }) {
   const geometry = useMemo(() => createRoundBrilliantGeometry(), [])
-  const envMap = useEnvironment({ preset: 'studio' })
   const constrained = useConstrainedDiamondProfile()
 
   useEffect(() => () => geometry.dispose(), [geometry])
 
   return (
-    <mesh geometry={geometry} rotation={[0.08, 0.32, 0]} scale={1.25}>
+    <mesh geometry={geometry} rotation={[0, 0.28, 0]} scale={1.25}>
       <DiamondMaterial envMap={envMap} constrained={constrained} />
     </mesh>
   )
