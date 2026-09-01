@@ -1,0 +1,1 @@
+export { TemporaryJewelry } from './TemporaryJewelry'
