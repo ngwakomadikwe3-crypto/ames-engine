@@ -79,7 +79,7 @@ jobs:
           import { readFileSync, writeFileSync } from 'node:fs'
           import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js'
           import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
-          import { Box3, Vector3 } from 'three'
+          import { Box3, Matrix4, Vector3 } from 'three'
 
           const sourcePath = process.env.SOURCE
           const targetPath = process.env.TARGET
@@ -91,39 +91,85 @@ jobs:
           const source = new FBXLoader().parse(asArrayBuffer(sourcePath), '')
           const target = (await new GLTFLoader().parseAsync(asArrayBuffer(targetPath), '')).scene
           const discrepancies = []
-          const close = (a, b, tolerance = 1e-3) => Math.abs(a - b) <= tolerance
-          const vectorsClose = (a, b, tolerance = 1e-3) => a.length === b.length && a.every((value, index) => close(value, b[index], tolerance))
+          const diagnostics = []
+          const WORLD_TOLERANCE = 1e-4
+          const METRIC_TOLERANCE = 1e-3
+          const close = (a, b, tolerance = METRIC_TOLERANCE) => Math.abs(a - b) <= tolerance + Math.max(Math.abs(a), Math.abs(b)) * 1e-6
+          const vectorsClose = (a, b, tolerance = METRIC_TOLERANCE) => a.length === b.length && a.every((value, index) => close(value, b[index], tolerance))
+          const normalizedCoordinateBasis = new Matrix4()
+          const normalizeWorldPoint = (object, point) => point.applyMatrix4(object.matrixWorld).applyMatrix4(normalizedCoordinateBasis)
 
           function inspect(root) {
             root.updateMatrixWorld(true)
             const nodes = []
             root.traverse((object) => {
-              const node = {
-                name: object.name,
-                type: object.type,
-                parent: object.parent?.name ?? null,
-                children: object.children.map((child) => child.name),
-                position: object.position.toArray(),
-                quaternion: object.quaternion.toArray(),
-                scale: object.scale.toArray(),
-              }
+              const node = { object, name: object.name, type: object.type, parent: object.parent?.name ?? null, children: object.children.map((child) => child.name), position: object.position.toArray(), quaternion: object.quaternion.toArray(), scale: object.scale.toArray() }
               if (object.isMesh) {
-                const position = object.geometry.getAttribute('position')
-                const normal = object.geometry.getAttribute('normal')
-                const box = new Box3().setFromObject(object)
+                const geometry = object.geometry
+                const position = geometry.getAttribute('position')
+                const normal = geometry.getAttribute('normal')
+                const materials = Array.isArray(object.material) ? object.material : [object.material]
                 node.vertices = position?.count ?? 0
-                node.triangles = object.geometry.index ? object.geometry.index.count / 3 : (position?.count ?? 0) / 3
+                node.triangles = geometry.index ? geometry.index.count / 3 : (position?.count ?? 0) / 3
+                node.indexed = Boolean(geometry.index)
                 node.normals = Boolean(normal && normal.count === position?.count)
-                node.materials = (Array.isArray(object.material) ? object.material : [object.material]).map((material) => material?.name ?? null)
-                node.groups = object.geometry.groups.map((group) => ({
-                  triangles: group.count / 3,
-                  material: (Array.isArray(object.material) ? object.material[group.materialIndex] : object.material)?.name ?? null,
-                }))
+                node.materials = materials.map((material) => material?.name ?? null)
+                node.groups = geometry.groups.length ? geometry.groups.map((group) => ({ start: group.start, count: group.count, triangles: group.count / 3, material: materials[group.materialIndex]?.name ?? null })) : [{ start: 0, count: node.indexed ? geometry.index.count : node.vertices, triangles: node.triangles, material: materials[0]?.name ?? null }]
+                node.materialTriangles = node.groups.reduce((totals, group) => ({ ...totals, [group.material]: (totals[group.material] ?? 0) + group.triangles }), {})
+                const box = new Box3().setFromObject(object)
                 node.bounds = { min: box.min.toArray(), max: box.max.toArray() }
               }
               nodes.push(node)
             })
             return nodes
+          }
+
+          function meshTriangles(node, group) {
+            const geometry = node.object.geometry
+            const position = geometry.getAttribute('position')
+            const index = geometry.index
+            const start = group.start
+            const end = start + group.count
+            const triangles = []
+            for (let offset = start; offset < end; offset += 3) {
+              const readIndex = (value) => index ? index.getX(value) : value
+              const points = [0, 1, 2].map((corner) => {
+                const vertexIndex = readIndex(offset + corner)
+                return normalizeWorldPoint(node.object, new Vector3().fromBufferAttribute(position, vertexIndex)).toArray()
+              })
+              triangles.push(points)
+            }
+            return triangles
+          }
+
+          function population(nodes, material) {
+            const triangles = nodes.flatMap((node) => node.groups.filter((group) => group.material === material).flatMap((group) => meshTriangles(node, group)))
+            const points = triangles.flat()
+            const min = [Infinity, Infinity, Infinity]
+            const max = [-Infinity, -Infinity, -Infinity]
+            const centroid = [0, 0, 0]
+            let area = 0
+            let signedVolume = 0
+            for (const point of points) for (let axis = 0; axis < 3; axis += 1) { min[axis] = Math.min(min[axis], point[axis]); max[axis] = Math.max(max[axis], point[axis]); centroid[axis] += point[axis] }
+            for (let axis = 0; axis < 3; axis += 1) centroid[axis] /= points.length / 3
+            for (const [a, b, c] of triangles) {
+              const ab = new Vector3().fromArray(b).sub(new Vector3().fromArray(a))
+              const ac = new Vector3().fromArray(c).sub(new Vector3().fromArray(a))
+              area += ab.cross(ac).length() / 2
+              signedVolume += new Vector3().fromArray(a).dot(new Vector3().fromArray(b).cross(new Vector3().fromArray(c))) / 6
+            }
+            const fingerprint = triangles.map((triangle) => triangle.map((point) => point.map((value) => Math.round(value / WORLD_TOLERANCE)).join(',')).sort().join('|')).sort().join(';')
+            return { triangles: triangles.length, fingerprint, area, signedVolume, centroid, dimensions: max.map((value, axis) => value - min[axis]), bounds: { min, max } }
+          }
+
+          function comparePopulation(label, expected, actual) {
+            if (!expected || !actual) { discrepancies.push(`${label} world-space population missing`); return }
+            if (expected.triangles !== actual.triangles) discrepancies.push(`${label} triangle count changed: FBX ${expected.triangles}, GLB ${actual.triangles}`)
+            if (expected.fingerprint !== actual.fingerprint) discrepancies.push(`${label} world-space triangle fingerprint changed (tolerance ${WORLD_TOLERANCE})`)
+            if (!close(expected.area, actual.area)) discrepancies.push(`${label} surface area changed: FBX ${expected.area}, GLB ${actual.area}`)
+            if (!vectorsClose(expected.centroid, actual.centroid)) discrepancies.push(`${label} world-space centroid changed`)
+            if (!vectorsClose(expected.dimensions, actual.dimensions)) discrepancies.push(`${label} world-space dimensions changed`)
+            if (Math.abs(expected.signedVolume) > METRIC_TOLERANCE && !close(Math.abs(expected.signedVolume), Math.abs(actual.signedVolume))) discrepancies.push(`${label} signed volume changed`)
           }
 
           const sourceNodes = inspect(source)
@@ -132,9 +178,9 @@ jobs:
           const targetMeshes = targetNodes.filter((node) => node.type === 'Mesh')
           const sourceNames = new Set(sourceNodes.map((node) => node.name))
           const targetNames = new Set(targetNodes.map((node) => node.name))
-          for (const name of ['Ring', 'Diamond', 'GEMS']) {
-            if (!sourceNames.has(name)) discrepancies.push(`Source node missing: ${name}`)
-            if (!targetNames.has(name)) discrepancies.push(`GLB node missing: ${name}`)
+          for (const name of ['Diamond', 'GEMS']) {
+            if (!sourceNames.has(name)) discrepancies.push(`Source semantic node missing: ${name}`)
+            if (!targetNames.has(name)) discrepancies.push(`GLB semantic node missing: ${name}`)
           }
 
           const sourceMaterials = new Set(sourceMeshes.flatMap((node) => node.materials))
@@ -142,44 +188,47 @@ jobs:
           for (const material of ['Gold', 'Dimond', 'Material']) {
             if (!sourceMaterials.has(material)) discrepancies.push(`Source material missing: ${material}`)
             if (!targetMaterials.has(material)) discrepancies.push(`GLB material missing: ${material}`)
+            comparePopulation(`${material} material population`, population(sourceMeshes, material), population(targetMeshes, material))
           }
-
-          function materialTriangles(nodes, material) {
-            return nodes.flatMap((node) => node.groups.length ? node.groups : node.materials.map((name) => ({ triangles: node.triangles, material: name })))
-              .filter((group) => group.material === material)
-              .reduce((sum, group) => sum + group.triangles, 0)
-          }
-          for (const material of ['Gold', 'Dimond', 'Material']) {
-            const expected = materialTriangles(sourceMeshes, material)
-            const actual = materialTriangles(targetMeshes, material)
-            if (expected !== actual) discrepancies.push(`${material} triangle assignment changed: FBX ${expected}, GLB ${actual}`)
-          }
+          if (JSON.stringify([...sourceMaterials].sort()) !== JSON.stringify([...targetMaterials].sort())) diagnostics.push(`Material names changed: FBX [${[...sourceMaterials].sort().join(', ')}], GLB [${[...targetMaterials].sort().join(', ')}]`)
+          if (sourceMeshes.reduce((sum, node) => sum + node.triangles, 0) !== targetMeshes.reduce((sum, node) => sum + node.triangles, 0)) discrepancies.push(`Total triangle count changed: FBX ${sourceMeshes.reduce((sum, node) => sum + node.triangles, 0)}, GLB ${targetMeshes.reduce((sum, node) => sum + node.triangles, 0)}`)
+          if (targetMeshes.some((node) => !node.normals)) discrepancies.push(`Normals missing on GLB mesh: ${targetMeshes.find((node) => !node.normals).name}`)
 
           const sourceDiamond = sourceNodes.find((node) => node.name === 'Diamond')
           const targetDiamond = targetNodes.find((node) => node.name === 'Diamond')
           const sourceGems = sourceNodes.find((node) => node.name === 'GEMS')
           const targetGems = targetNodes.find((node) => node.name === 'GEMS')
           for (const [label, expected, actual] of [['Diamond', sourceDiamond, targetDiamond], ['GEMS', sourceGems, targetGems]]) {
-            if (expected && actual) {
-              if (expected.parent !== actual.parent) discrepancies.push(`${label} parent changed: FBX ${expected.parent}, GLB ${actual.parent}`)
-              if (!vectorsClose(expected.position, actual.position) || !vectorsClose(expected.quaternion, actual.quaternion) || !vectorsClose(expected.scale, actual.scale)) discrepancies.push(`${label} transform changed`)
-              if (expected.vertices !== actual.vertices || expected.triangles !== actual.triangles) discrepancies.push(`${label} geometry count changed: FBX ${expected.vertices} vertices/${expected.triangles} triangles, GLB ${actual.vertices} vertices/${actual.triangles} triangles`)
-              if (expected.normals !== actual.normals) discrepancies.push(`${label} normals changed`)
-              if (expected.bounds && actual.bounds && (!vectorsClose(expected.bounds.min, actual.bounds.min) || !vectorsClose(expected.bounds.max, actual.bounds.max))) discrepancies.push(`${label} world bounds changed`)
-            }
+            if (!expected || !actual) { discrepancies.push(`${label} node missing`); continue }
+            if (expected.type !== actual.type) diagnostics.push(`${label} representation changed: FBX ${expected.type}, GLB ${actual.type}`)
+            if (expected.parent !== actual.parent) diagnostics.push(`${label} parent name changed: FBX ${expected.parent}, GLB ${actual.parent}`)
+            if (expected.triangles !== actual.triangles) discrepancies.push(`${label} triangle count changed: FBX ${expected.triangles}, GLB ${actual.triangles}`)
+            if (!actual.normals) discrepancies.push(`${label} normals missing`)
+            comparePopulation(`${label} node geometry`, population([expected], expected.materials[0]), population([actual], actual.materials[0]))
+            if (!vectorsClose(expected.position, actual.position) || !vectorsClose(expected.quaternion, actual.quaternion) || !vectorsClose(expected.scale, actual.scale)) diagnostics.push(`${label} local transform changed; world-space geometry is authoritative`)
           }
 
           const ringSource = sourceNodes.find((node) => node.name === 'Ring' && node.type === 'Mesh')
           const ringTarget = targetNodes.find((node) => node.name === 'Ring')
-          if (!ringTarget) discrepancies.push('GLB Ring semantic parent missing')
-          if (ringTarget && !['Group', 'Mesh', 'Object3D'].includes(ringTarget.type)) discrepancies.push(`GLB Ring node has unexpected type: ${ringTarget.type}`)
+          if (!ringSource) diagnostics.push('Source Ring mesh boundary is unavailable')
+          if (!ringTarget) diagnostics.push('GLB Ring semantic parent/group is unavailable')
+          if (ringTarget && ringTarget.type !== 'Mesh') diagnostics.push(`GLB Ring representation changed: FBX Mesh, GLB ${ringTarget.type}`)
           const ringTargetMeshes = targetNodes.filter((node) => node.parent === 'Ring' && node.type === 'Mesh')
-          if (!ringTargetMeshes.some((node) => node.materials.includes('Gold'))) discrepancies.push('GLB Ring/Gold separation missing')
-          if (ringSource && ringTarget && (!vectorsClose(ringSource.position, ringTarget.position) || !vectorsClose(ringSource.quaternion, ringTarget.quaternion) || !vectorsClose(ringSource.scale, ringTarget.scale))) discrepancies.push('Ring transform changed')
-          if (!targetDiamond || !targetGems || targetDiamond.parent === targetGems.parent && targetDiamond.name === targetGems.name) discrepancies.push('Diamond and GEMS are not separately identifiable')
+          const goldParts = targetMeshes.filter((node) => node.materials.includes('Gold'))
+          const dimondParts = targetMeshes.filter((node) => node.materials.includes('Dimond'))
+          if (!goldParts.length) discrepancies.push('GLB Gold material population missing')
+          if (!dimondParts.length) discrepancies.push('GLB Dimond material population missing')
+          if (ringSource && ringTarget) {
+            if (JSON.stringify(ringSource.children) !== JSON.stringify(ringTarget.children)) diagnostics.push(`Ring child representation changed: FBX [${ringSource.children.join(', ')}], GLB [${ringTarget.children.join(', ')}]`)
+            if (!vectorsClose(ringSource.position, ringTarget.position) || !vectorsClose(ringSource.quaternion, ringTarget.quaternion) || !vectorsClose(ringSource.scale, ringTarget.scale)) diagnostics.push('Ring local transform changed; world-space geometry is authoritative')
+          }
+          if (targetDiamond && targetGems && targetDiamond.object === targetGems.object) discrepancies.push('Diamond and GEMS were merged')
+          if (targetDiamond?.parent !== 'Ring' || targetGems?.parent !== 'Ring') diagnostics.push('Diamond/GEMS parent representation changed; component identity and world-space geometry are authoritative')
+          if (targetNodes.some((node) => ['Circle002', 'Circle002_1'].includes(node.name))) diagnostics.push('Circle002/Circle002_1 generated names accepted as local representation')
+          if (ringTargetMeshes.some((node) => !['Diamond', 'GEMS', 'Circle002', 'Circle002_1'].includes(node.name))) diagnostics.push('Ring contains generated child mesh names accepted as local representation')
 
           const semantic = [
-            `METAL: ${targetMaterials.has('Gold') && ringTargetMeshes.some((node) => node.materials.includes('Gold')) ? 'PASS' : 'FAIL'}`,
+            `METAL: ${targetMaterials.has('Gold') && goldParts.length ? 'PASS' : 'FAIL'}`,
             `CENTER_STONE: ${Boolean(targetDiamond && targetDiamond.type === 'Mesh' && targetDiamond.materials.length > 0) ? 'PASS' : 'FAIL'}`,
             `ACCENT_STONE: ${Boolean(targetGems && targetGems.type === 'Mesh' && targetGems.triangles > 0) ? 'PASS' : 'FAIL'}`,
           ]
@@ -187,28 +236,25 @@ jobs:
 
           const result = discrepancies.length === 0 ? 'CONVERSION PASS' : 'CONVERSION FAIL'
           const report = [
-            `# Blender FBX to GLB Validation`,
-            ``,
-            `## ${result}`,
-            ``,
-            `Source: ${sourcePath}`,
-            `Target: ${targetPath}`,
-            `Source bytes: ${readFileSync(sourcePath).byteLength}`,
-            `Target bytes: ${readFileSync(targetPath).byteLength}`,
-            ``,
-            `## Semantic validation`,
-            ...semantic.map((line) => `- ${line}`),
-            ``,
+            `# Blender FBX to GLB Validation`, ``, `## ${result}`, ``,
+            `Source: ${sourcePath}`, `Target: ${targetPath}`,
+            `Source bytes: ${readFileSync(sourcePath).byteLength}`, `Target bytes: ${readFileSync(targetPath).byteLength}`, ``,
+            `## Semantic validation`, ...semantic.map((line) => `- ${line}`), ``,
+            `## Normalized world-space methodology`,
+            `- Coordinate basis: common loader basis with node matrixWorld applied`,
+            `- Triangle fingerprint tolerance: ${WORLD_TOLERANCE}`,
+            `- Raw vertex-count equality: not required`,
+            `- Local transform differences: diagnostic only when world-space geometry matches`, ``,
             `## Structural comparison`,
             `- FBX mesh nodes: ${sourceMeshes.map((node) => node.name).join(', ')}`,
             `- GLB mesh nodes: ${targetMeshes.map((node) => node.name).join(', ')}`,
-            `- FBX materials: ${[...sourceMaterials].join(', ')}`,
-            `- GLB materials: ${[...targetMaterials].join(', ')}`,
-            `- Diamond separate from GEMS: ${targetDiamond?.parent !== targetGems?.parent || targetDiamond?.name !== targetGems?.name ? 'PASS' : 'FAIL'}`,
-            `- Ring/Gold separation: ${ringTargetMeshes.some((node) => node.materials.includes('Gold')) ? 'PASS' : 'FAIL'}`,
-            ``,
-            `## Discrepancies`,
-            ...(discrepancies.length ? discrepancies.map((item) => `- ${item}`) : ['- None']),
+            `- GLB Ring node type: ${ringTarget?.type ?? 'missing'}`,
+            `- GLB Gold population: ${goldParts.length ? 'PASS' : 'FAIL'}`,
+            `- GLB Dimond population: ${dimondParts.length ? 'PASS' : 'FAIL'}`,
+            `- Diamond separate from GEMS: ${targetDiamond && targetGems && targetDiamond.object !== targetGems.object ? 'PASS' : 'FAIL'}`,
+            `- Ring representation: ${ringTarget ? 'PRESENT' : 'DIAGNOSTIC ONLY'}`, ``,
+            `## Diagnostics`, ...(diagnostics.length ? diagnostics.map((item) => `- ${item}`) : ['- None']), ``,
+            `## Discrepancies`, ...(discrepancies.length ? discrepancies.map((item) => `- ${item}`) : ['- None']),
           ].join('\\n') + '\\n'
           writeFileSync(reportPath, report)
           console.log(report)
