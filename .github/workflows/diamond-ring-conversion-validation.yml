@@ -37,9 +37,9 @@ jobs:
           cd "$RUNNER_TEMP/blender"
           curl --fail --location --retry 3 --output "$BLENDER_ARCHIVE" \
             "https://download.blender.org/release/Blender4.4/$BLENDER_ARCHIVE"
-          curl --fail --location --retry 3 --output SHA256SUMS \
-            "https://download.blender.org/release/Blender4.4/SHA256SUMS"
-          grep "  $BLENDER_ARCHIVE$" SHA256SUMS | sha256sum --check --status -
+          curl --fail --location --retry 3 --output "$BLENDER_ARCHIVE.sha256" \
+            "https://download.blender.org/release/Blender4.4/blender-4.4.3.sha256"
+          awk -v archive="$BLENDER_ARCHIVE" '$0 ~ archive { print $1 "  " archive; found=1; exit } END { if (!found) exit 1 }' "$BLENDER_ARCHIVE.sha256" | sha256sum --check --status -
           tar -xJf "$BLENDER_ARCHIVE"
           echo "BLENDER_BIN=$RUNNER_TEMP/blender/blender-$BLENDER_VERSION-linux-x64/blender" >> "$GITHUB_ENV"
 
