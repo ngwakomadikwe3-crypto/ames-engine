@@ -67,7 +67,6 @@ jobs:
               export_materials="EXPORT",
               export_keep_originals=True,
               export_draco_mesh_compression_enable=False,
-              export_optimize_animation=False,
           )
           ' -- "$SOURCE" "$TARGET"
           test -s "$TARGET"
