@@ -5,7 +5,10 @@ import { Box3, Color, Mesh, Vector3, type Material } from 'three'
 import { readJewelryScene, type JewelryAssetReadResult } from '../../engine/loaders'
 import { classifyJewelryAsset } from '../../engine/analyzer/classifyJewelryAsset'
 
-const DEFAULT_MODEL = '/models/diamond_ring_candidate_blender.glb'
+const MODELS = [
+  { label: 'Diamond Ring Candidate', url: '/models/diamond_ring_candidate_blender.glb' },
+  { label: 'Solitaire Diamond Ring', url: '/models/solitar_diamond_ring.glb' },
+] as const
 
 function JewelryModel({
   url,
@@ -67,18 +70,34 @@ function JewelryModel({
 }
 
 export function EngineLabPage() {
+  const [modelUrl, setModelUrl] = useState<string>(MODELS[0].url)
   const [report, setReport] = useState<JewelryAssetReadResult | null>(null)
   const [selectedMeshId, setSelectedMeshId] = useState<string>()
   const analysis = useMemo(() => (report ? classifyJewelryAsset(report) : null), [report])
 
+  const changeModel = (url: string) => {
+    setModelUrl(url)
+    setReport(null)
+    setSelectedMeshId(undefined)
+  }
+
   return (
     <main style={{ width: '100vw', height: '100vh', background: '#090909', color: '#fff', fontFamily: 'Inter, system-ui, sans-serif' }}>
-      <div style={{ position: 'absolute', zIndex: 10, top: 18, left: 20, pointerEvents: 'none' }}>
+      <div style={{ position: 'absolute', zIndex: 10, top: 18, left: 20 }}>
         <div style={{ fontSize: 13, letterSpacing: '0.18em', fontWeight: 700 }}>AMES ENGINE LAB</div>
         <div style={{ marginTop: 6, fontSize: 12, opacity: 0.65 }}>
           {report ? `${report.summary.meshCount} meshes · ${report.summary.materialCount} materials · ${report.summary.triangleCount.toLocaleString()} triangles` : 'Reading jewelry asset…'}
         </div>
         <div style={{ marginTop: 4, fontSize: 11, opacity: 0.45 }}>Drag to rotate · scroll to zoom · right-drag to pan</div>
+        <select
+          value={modelUrl}
+          onChange={(event) => changeModel(event.target.value)}
+          style={{ marginTop: 10, background: '#151515', color: '#fff', border: '1px solid #333', borderRadius: 8, padding: '8px 10px', fontSize: 11 }}
+        >
+          {MODELS.map((model) => (
+            <option key={model.url} value={model.url}>{model.label}</option>
+          ))}
+        </select>
       </div>
 
       {analysis && (
@@ -109,7 +128,7 @@ export function EngineLabPage() {
         <directionalLight position={[5, 7, 5]} intensity={3.5} />
         <directionalLight position={[-4, 3, -4]} intensity={2} />
         <Suspense fallback={null}>
-          <JewelryModel url={DEFAULT_MODEL} onRead={setReport} selectedMeshId={selectedMeshId} />
+          <JewelryModel key={modelUrl} url={modelUrl} onRead={setReport} selectedMeshId={selectedMeshId} />
         </Suspense>
         <OrbitControls makeDefault enableDamping dampingFactor={0.07} />
       </Canvas>
