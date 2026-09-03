@@ -1,11 +1,12 @@
 import { Canvas, useThree } from '@react-three/fiber'
-import { OrbitControls, useGLTF } from '@react-three/drei'
+import { OrbitControls } from '@react-three/drei'
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { Box3, Color, Mesh, Vector3, type Material } from 'three'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { readJewelryScene, type JewelryAssetReadResult } from '../../engine/loaders'
 import { classifyJewelryAsset } from '../../engine/analyzer/classifyJewelryAsset'
 
-const LAB_BUILD = 'v1.2'
+const LAB_BUILD = 'v1.3'
 
 const MODELS = [
   { label: 'Ring Candidate', url: '/models/diamond_ring_candidate_blender.glb' },
@@ -21,12 +22,35 @@ function JewelryModel({
   onRead: (report: JewelryAssetReadResult) => void
   selectedMeshId?: string
 }) {
-  const gltf = useGLTF(url)
   const camera = useThree((state) => state.camera)
-  const report = useMemo(() => readJewelryScene(gltf.scene), [gltf.scene])
+  const [scene, setScene] = useState<THREE.Group | null>(null)
 
   useEffect(() => {
-    const bounds = new Box3().setFromObject(gltf.scene)
+    let cancelled = false
+    setScene(null)
+
+    new GLTFLoader().load(
+      url,
+      (gltf) => {
+        if (!cancelled) setScene(gltf.scene)
+      },
+      undefined,
+      (error) => {
+        console.error(`AMES Engine Lab failed to load ${url}`, error)
+      },
+    )
+
+    return () => {
+      cancelled = true
+    }
+  }, [url])
+
+  const report = useMemo(() => (scene ? readJewelryScene(scene) : null), [scene])
+
+  useEffect(() => {
+    if (!scene || !report) return
+
+    const bounds = new Box3().setFromObject(scene)
     const center = bounds.getCenter(new Vector3())
     const size = bounds.getSize(new Vector3())
     const radius = Math.max(size.x, size.y, size.z)
@@ -38,12 +62,13 @@ function JewelryModel({
     camera.far = Math.max(distance * 100, 100)
     camera.updateProjectionMatrix()
     onRead(report)
-  }, [camera, gltf.scene, onRead, report])
+  }, [camera, onRead, report, scene])
 
   useEffect(() => {
+    if (!scene) return
     const restores: Array<() => void> = []
 
-    gltf.scene.traverse((object) => {
+    scene.traverse((object) => {
       if (!(object instanceof Mesh) || object.uuid !== selectedMeshId) return
       const materials = (Array.isArray(object.material) ? object.material : [object.material]) as Material[]
       materials.forEach((material) => {
@@ -66,9 +91,9 @@ function JewelryModel({
     })
 
     return () => restores.forEach((restore) => restore())
-  }, [gltf.scene, selectedMeshId])
+  }, [scene, selectedMeshId])
 
-  return <primitive object={gltf.scene} />
+  return scene ? <primitive object={scene} /> : null
 }
 
 export function EngineLabPage() {
