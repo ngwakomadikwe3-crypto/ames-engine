@@ -1,58 +1,66 @@
 import { Canvas, useThree } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import { Suspense, useEffect, useMemo, useState } from 'react'
-import { Box3, Color, Mesh, Vector3, type Material } from 'three'
+import { Box3, Mesh, Vector3 } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { readJewelryScene, type JewelryAssetReadResult } from '../../engine/loaders'
-import { classifyJewelryAsset } from '../../engine/analyzer/classifyJewelryAsset'
 import { analyzeSceneConnectedComponents, type MeshComponentAnalysis } from '../../engine/analyzer/analyzeConnectedComponents'
-import { createJewelryMaterialAssignmentPlan } from '../../engine/materials/assignJewelryMaterials'
-import { createGemstonePreviewMaterial, type GemstonePreviewRole } from '../../engine/materials/createGemstonePreviewMaterial'
-import { createJewelryMetalMaterial, JEWELRY_METAL_PRESETS, type JewelryMetalPreset } from '../../engine/materials/createJewelryMetalMaterial'
+import { classifyJewelryComponents, type JewelryComponentRole } from '../../engine/analyzer/classifyJewelryComponents'
 
-const LAB_BUILD = 'v1.9'
+const LAB_BUILD = 'v2.0'
 const MODELS = [
   { label: 'Ring Candidate', url: '/models/diamond_ring_candidate_blender.glb' },
   { label: 'Solitaire Ring', url: '/models/solitar_diamond_ring.glb' },
 ] as const
+const ROLE_COLORS: Record<JewelryComponentRole, string> = { CENTER_STONE: '#ffffff', ACCENT_STONE: '#66b8ff', SETTING: '#ff7bbd', METAL_STRUCTURE: '#d6a84b' }
 
-function JewelryModel({ url, onRead, onComponents, selectedMeshId, metalPreset }: { url: string; onRead: (report: JewelryAssetReadResult) => void; onComponents: (value: MeshComponentAnalysis[]) => void; selectedMeshId?: string; metalPreset: JewelryMetalPreset }) {
+function ComponentMarkers({ components, visibleRole }: { components: MeshComponentAnalysis[]; visibleRole?: JewelryComponentRole }) {
+  const intelligence = useMemo(() => classifyJewelryComponents(components), [components])
+  const shown = intelligence.components.filter((item) => !visibleRole || item.role === visibleRole)
+  return <group>{shown.map((item) => {
+    const radius = item.role === 'CENTER_STONE' ? 0.055 : item.role === 'ACCENT_STONE' ? 0.018 : 0.012
+    return <mesh key={`${item.meshId}-${item.componentIndex}`} position={item.center as [number, number, number]}><sphereGeometry args={[radius, 10, 10]} /><meshBasicMaterial color={ROLE_COLORS[item.role]} depthTest={false} transparent opacity={item.role === 'METAL_STRUCTURE' ? 0.45 : 0.82} /></mesh>
+  })}</group>
+}
+
+function JewelryModel({ url, onRead, onComponents, components, visibleRole }: { url: string; onRead: (report: JewelryAssetReadResult) => void; onComponents: (value: MeshComponentAnalysis[]) => void; components: MeshComponentAnalysis[]; visibleRole?: JewelryComponentRole }) {
   const camera = useThree((state) => state.camera)
   const [scene, setScene] = useState<THREE.Group | null>(null)
   useEffect(() => { let cancelled = false; setScene(null); new GLTFLoader().load(url, (gltf) => { if (!cancelled) setScene(gltf.scene) }, undefined, (error) => console.error(`AMES Engine Lab failed to load ${url}`, error)); return () => { cancelled = true } }, [url])
   const report = useMemo(() => (scene ? readJewelryScene(scene) : null), [scene])
   const componentAnalysis = useMemo(() => (scene ? analyzeSceneConnectedComponents(scene) : []), [scene])
-  const analysis = useMemo(() => (report ? classifyJewelryAsset(report) : null), [report])
-  const materialPlan = useMemo(() => (report && analysis ? createJewelryMaterialAssignmentPlan(report, analysis) : null), [analysis, report])
-
   useEffect(() => { if (scene) onComponents(componentAnalysis) }, [componentAnalysis, onComponents, scene])
-  useEffect(() => {
-    if (!scene || !materialPlan) return
-    const roleByMeshId = new Map(materialPlan.assignments.map((assignment) => [assignment.meshId, assignment.role])); const restores: Array<() => void> = []
-    scene.traverse((object) => { if (!(object instanceof Mesh)) return; const role = roleByMeshId.get(object.uuid); if (role !== 'JEWELRY_METAL' && role !== 'DIAMOND_CENTER' && role !== 'DIAMOND_ACCENT') return; const originalMaterial = object.material; const amesMaterial = role === 'JEWELRY_METAL' ? createJewelryMetalMaterial(metalPreset) : createGemstonePreviewMaterial(role as GemstonePreviewRole); object.material = amesMaterial; restores.push(() => { object.material = originalMaterial; amesMaterial.dispose() }) })
-    return () => restores.forEach((restore) => restore())
-  }, [materialPlan, metalPreset, scene])
   useEffect(() => { if (!scene || !report) return; const bounds = new Box3().setFromObject(scene); const center = bounds.getCenter(new Vector3()); const size = bounds.getSize(new Vector3()); const radius = Math.max(size.x, size.y, size.z); const distance = Math.max(radius * 1.8, 1); camera.position.set(center.x + distance, center.y + distance * 0.65, center.z + distance); camera.lookAt(center); camera.near = Math.max(distance / 1000, 0.001); camera.far = Math.max(distance * 100, 100); camera.updateProjectionMatrix(); onRead(report) }, [camera, onRead, report, scene])
-  useEffect(() => { if (!scene) return; const restores: Array<() => void> = []; scene.traverse((object) => { if (!(object instanceof Mesh) || object.uuid !== selectedMeshId) return; const materials = (Array.isArray(object.material) ? object.material : [object.material]) as Material[]; materials.forEach((material) => { const candidate = material as Material & { color?: Color; emissive?: Color; emissiveIntensity?: number }; if (!candidate.color) return; const originalColor = candidate.color.clone(); const originalEmissive = candidate.emissive?.clone(); const originalIntensity = candidate.emissiveIntensity; candidate.color.set('#f4d06f'); candidate.emissive?.set('#6b4d00'); if (candidate.emissive) candidate.emissiveIntensity = 0.65; candidate.needsUpdate = true; restores.push(() => { candidate.color?.copy(originalColor); if (originalEmissive && candidate.emissive) candidate.emissive.copy(originalEmissive); if (originalIntensity !== undefined) candidate.emissiveIntensity = originalIntensity; candidate.needsUpdate = true }) }) }); return () => restores.forEach((restore) => restore()) }, [scene, selectedMeshId, metalPreset])
-  return scene ? <primitive object={scene} /> : null
+  return <>{scene ? <primitive object={scene} /> : null}<ComponentMarkers components={components} visibleRole={visibleRole} /></>
 }
 
 export function EngineLabPage() {
-  const [modelUrl, setModelUrl] = useState<string>(MODELS[0].url); const [report, setReport] = useState<JewelryAssetReadResult | null>(null); const [components, setComponents] = useState<MeshComponentAnalysis[]>([]); const [selectedMeshId, setSelectedMeshId] = useState<string>(); const [metalPreset, setMetalPreset] = useState<JewelryMetalPreset>('18K_YELLOW_GOLD')
-  const analysis = useMemo(() => (report ? classifyJewelryAsset(report) : null), [report]); const materialPlan = useMemo(() => (report && analysis ? createJewelryMaterialAssignmentPlan(report, analysis) : null), [analysis, report]); const changeModel = (url: string) => { setModelUrl(url); setReport(null); setComponents([]); setSelectedMeshId(undefined) }
+  const [modelUrl, setModelUrl] = useState<string>(MODELS[1].url)
+  const [report, setReport] = useState<JewelryAssetReadResult | null>(null)
+  const [components, setComponents] = useState<MeshComponentAnalysis[]>([])
+  const [visibleRole, setVisibleRole] = useState<JewelryComponentRole>()
+  const intelligence = useMemo(() => classifyJewelryComponents(components), [components])
   const totalComponents = components.reduce((sum, item) => sum + item.componentCount, 0)
+  const changeModel = (url: string) => { setModelUrl(url); setReport(null); setComponents([]); setVisibleRole(undefined) }
 
   return <main style={{ width: '100vw', height: '100vh', background: '#090909', color: '#fff', fontFamily: 'Inter, system-ui, sans-serif' }}>
-    <div style={{ position: 'absolute', zIndex: 10, top: 18, left: 20 }}>
+    <div style={{ position: 'absolute', zIndex: 10, top: 18, left: 20, maxWidth: 520 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}><div style={{ fontSize: 13, letterSpacing: '0.18em', fontWeight: 700 }}>AMES ENGINE LAB</div><div style={{ fontSize: 9, opacity: 0.45 }}>{LAB_BUILD}</div></div>
       <div style={{ marginTop: 6, fontSize: 12, opacity: 0.65 }}>{report ? `${report.summary.meshCount} meshes · ${report.summary.materialCount} materials · ${report.summary.triangleCount.toLocaleString()} triangles` : 'Reading jewelry asset…'}</div>
-      <div style={{ marginTop: 4, fontSize: 11, color: '#9db7d5' }}>{components.length ? `${totalComponents} connected geometry components detected inside ${components.length} meshes` : 'Analyzing connected geometry…'}</div>
-      <div style={{ marginTop: 4, fontSize: 11, opacity: 0.45 }}>Drag to rotate · scroll to zoom · right-drag to pan</div>
-      <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>{MODELS.map((model) => { const active = modelUrl === model.url; return <button key={model.url} onClick={() => changeModel(model.url)} style={{ border: active ? '1px solid #d6b76b' : '1px solid #333', borderRadius: 8, padding: '8px 11px', background: active ? '#201c12' : '#151515', color: '#fff', cursor: 'pointer', fontSize: 11, fontWeight: active ? 700 : 500 }}>{model.label}</button> })}</div>
-      <div style={{ marginTop: 14, fontSize: 9, letterSpacing: '0.14em', opacity: 0.55 }}>METAL PRESET</div><div style={{ marginTop: 7, display: 'flex', flexWrap: 'wrap', gap: 7, maxWidth: 430 }}>{(Object.entries(JEWELRY_METAL_PRESETS) as Array<[JewelryMetalPreset, (typeof JEWELRY_METAL_PRESETS)[JewelryMetalPreset]]>).map(([key, preset]) => { const active = metalPreset === key; return <button key={key} onClick={() => setMetalPreset(key)} style={{ border: active ? '1px solid #d6b76b' : '1px solid #333', borderRadius: 7, padding: '7px 9px', background: active ? '#201c12' : '#151515', color: '#fff', cursor: 'pointer', fontSize: 10 }}>{preset.label}</button> })}</div>
-      <div style={{ marginTop: 10, fontSize: 9, color: '#9db7d5' }}>v1.9 observes sub-mesh components only · renderer logic unchanged</div>
+      <div style={{ marginTop: 4, fontSize: 11, color: '#9db7d5' }}>{components.length ? `${totalComponents} components classified individually` : 'Analyzing connected geometry…'}</div>
+      <div style={{ marginTop: 4, fontSize: 11, opacity: 0.45 }}>Drag to rotate · scroll to zoom · markers are analysis only</div>
+      <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>{MODELS.map((model) => <button key={model.url} onClick={() => changeModel(model.url)} style={{ border: modelUrl === model.url ? '1px solid #d6b76b' : '1px solid #333', borderRadius: 8, padding: '8px 11px', background: modelUrl === model.url ? '#201c12' : '#151515', color: '#fff', cursor: 'pointer', fontSize: 11 }}>{model.label}</button>)}</div>
+      <div style={{ marginTop: 14, fontSize: 9, letterSpacing: '0.14em', opacity: 0.55 }}>SHOW PREDICTED GROUP</div>
+      <div style={{ marginTop: 7, display: 'flex', flexWrap: 'wrap', gap: 7 }}><button onClick={() => setVisibleRole(undefined)} style={{ padding: '7px 9px', borderRadius: 7, border: !visibleRole ? '1px solid #fff' : '1px solid #333', background: '#151515', color: '#fff', cursor: 'pointer', fontSize: 10 }}>All</button>{(Object.keys(ROLE_COLORS) as JewelryComponentRole[]).map((role) => <button key={role} onClick={() => setVisibleRole(role)} style={{ padding: '7px 9px', borderRadius: 7, border: visibleRole === role ? `1px solid ${ROLE_COLORS[role]}` : '1px solid #333', background: '#151515', color: ROLE_COLORS[role], cursor: 'pointer', fontSize: 10 }}>{role.replace('_', ' ')}</button>)}</div>
+      <div style={{ marginTop: 10, fontSize: 9, color: '#9db7d5' }}>v2.0 predicts components only · NO material execution</div>
     </div>
-    {analysis && materialPlan && <aside style={{ position: 'absolute', zIndex: 20, top: 18, right: 20, width: 350, maxHeight: 'calc(100vh - 36px)', overflowY: 'auto', padding: 16, border: '1px solid #2b2b2b', borderRadius: 12, background: 'rgba(14,14,14,0.92)' }}><div style={{ fontSize: 11, letterSpacing: '0.16em', fontWeight: 700, opacity: 0.65 }}>AMES COMPONENT ANALYSIS</div><div style={{ marginTop: 6, fontSize: 9, color: '#d6b76b' }}>v1.9 · connected component inspection</div><div style={{ marginTop: 10, display: 'grid', gap: 8 }}>{analysis.parts.map((part) => { const assignment = materialPlan.assignments.find((item) => item.meshId === part.meshId); const component = components.find((item) => item.meshId === part.meshId); const largest = component?.components[0]; return <button key={part.meshId} onClick={() => setSelectedMeshId((current) => current === part.meshId ? undefined : part.meshId)} style={{ textAlign: 'left', border: selectedMeshId === part.meshId ? '1px solid #d6b76b' : '1px solid #2d2d2d', borderRadius: 9, padding: '10px 11px', background: selectedMeshId === part.meshId ? '#201c12' : '#151515', color: '#fff', cursor: 'pointer' }}><div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}><strong>{part.meshName}</strong><span style={{ opacity: 0.65 }}>{component?.componentCount ?? 0} components</span></div><div style={{ marginTop: 4, fontSize: 10, color: '#d6b76b' }}>{part.classification.replace('_', ' ')} · {assignment?.role ?? 'PRESERVE_SOURCE'}</div>{largest && <div style={{ marginTop: 6, fontSize: 9, lineHeight: 1.45, opacity: 0.55 }}>Largest component: {largest.triangleCount.toLocaleString()} tris · {Math.round(largest.compactness * 100)}% compact · {largest.elongation.toFixed(1)}× aspect</div>}</button> })}</div></aside>}
-    <Canvas camera={{ fov: 42, position: [4, 3, 4] }} dpr={[1, 1.5]}><color attach="background" args={['#090909']} /><ambientLight intensity={1.4} /><directionalLight position={[5, 7, 5]} intensity={3.5} /><directionalLight position={[-4, 3, -4]} intensity={2} /><Suspense fallback={null}><JewelryModel key={modelUrl} url={modelUrl} onRead={setReport} onComponents={setComponents} selectedMeshId={selectedMeshId} metalPreset={metalPreset} /></Suspense><OrbitControls makeDefault enableDamping dampingFactor={0.07} /></Canvas>
+
+    <aside style={{ position: 'absolute', zIndex: 20, top: 18, right: 20, width: 330, padding: 16, border: '1px solid #2b2b2b', borderRadius: 12, background: 'rgba(14,14,14,0.92)' }}>
+      <div style={{ fontSize: 11, letterSpacing: '0.16em', fontWeight: 700, opacity: 0.65 }}>AMES COMPONENT INTELLIGENCE</div><div style={{ marginTop: 6, fontSize: 9, color: '#d6b76b' }}>v2.0 · prediction review</div>
+      <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>{(Object.keys(ROLE_COLORS) as JewelryComponentRole[]).map((role) => <div key={role} style={{ border: '1px solid #2d2d2d', borderRadius: 9, padding: 11, background: '#151515' }}><div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}><strong style={{ color: ROLE_COLORS[role] }}>{role.replace('_', ' ')}</strong><strong>{intelligence.counts[role]}</strong></div></div>)}</div>
+      <div style={{ marginTop: 12, fontSize: 9, lineHeight: 1.5, opacity: 0.5 }}>White = center candidate · blue = accent candidates · pink = setting candidates · gold = structural metal candidates. These are predictions, not renderer assignments.</div>
+    </aside>
+
+    <Canvas camera={{ fov: 42, position: [4, 3, 4] }} dpr={[1, 1.5]}><color attach="background" args={['#090909']} /><ambientLight intensity={1.4} /><directionalLight position={[5, 7, 5]} intensity={3.5} /><directionalLight position={[-4, 3, -4]} intensity={2} /><Suspense fallback={null}><JewelryModel key={modelUrl} url={modelUrl} onRead={setReport} onComponents={setComponents} components={components} visibleRole={visibleRole} /></Suspense><OrbitControls makeDefault enableDamping dampingFactor={0.07} /></Canvas>
   </main>
 }
