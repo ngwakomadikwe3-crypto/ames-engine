@@ -19,7 +19,7 @@ export interface JewelryAssetClassificationResult {
   parts: JewelryMeshClassification[]
 }
 
-const STONE_WORDS = ['diamond', 'gem', 'stone', 'brilliant', 'crystal']
+const STONE_WORDS = ['diamond', 'gem', 'gems', 'stone', 'brilliant', 'crystal']
 const ACCENT_WORDS = ['pave', 'pavé', 'accent', 'side', 'melee']
 const METAL_WORDS = ['gold', 'silver', 'platinum', 'metal', 'ring', 'band', 'shank']
 const SETTING_WORDS = ['prong', 'claw', 'setting', 'head', 'basket']
@@ -36,17 +36,50 @@ function includesAny(text: string, words: string[]): boolean {
   return words.some((word) => text.includes(word))
 }
 
-function volume(mesh: JewelryMeshInfo): number {
-  return mesh.dimensions[0] * mesh.dimensions[1] * mesh.dimensions[2]
+function sortedDimensions(mesh: JewelryMeshInfo): [number, number, number] {
+  const values = [...mesh.dimensions].map((value) => Math.abs(value)).sort((a, b) => b - a)
+  return [values[0] ?? 0, values[1] ?? 0, values[2] ?? 0]
+}
+
+function compactness(mesh: JewelryMeshInfo): number {
+  const [largest, middle, smallest] = sortedDimensions(mesh)
+  if (largest <= 0 || middle <= 0) return 0
+
+  const widthBalance = middle / largest
+  const depthBalance = smallest / middle
+  return Math.max(0, Math.min(1, widthBalance * 0.7 + depthBalance * 0.3))
+}
+
+function elongation(mesh: JewelryMeshInfo): number {
+  const [largest, middle] = sortedDimensions(mesh)
+  if (middle <= 0) return Number.POSITIVE_INFINITY
+  return largest / middle
+}
+
+function centerStoneScore(mesh: JewelryMeshInfo, asset: JewelryAssetReadResult): number {
+  const text = textForMesh(mesh, asset)
+  const geometryCompactness = compactness(mesh)
+  const stretched = elongation(mesh)
+
+  let score = geometryCompactness * 0.7
+
+  if (mesh.name.trim().toLowerCase() === 'diamond') score += 0.18
+  else if (text.includes('diamond')) score += 0.1
+
+  if (includesAny(text, ACCENT_WORDS)) score -= 0.3
+  if (stretched > 2.2) score -= Math.min(0.4, (stretched - 2.2) * 0.12)
+
+  return score
 }
 
 export function classifyJewelryAsset(
   asset: JewelryAssetReadResult,
 ): JewelryAssetClassificationResult {
   const stoneCandidates = asset.meshes.filter((mesh) => includesAny(textForMesh(mesh, asset), STONE_WORDS))
-  const largestStoneId = stoneCandidates
-    .slice()
-    .sort((a, b) => volume(b) - volume(a))[0]?.id
+  const rankedStones = stoneCandidates
+    .map((mesh) => ({ mesh, score: centerStoneScore(mesh, asset) }))
+    .sort((a, b) => b.score - a.score)
+  const centerStoneId = rankedStones[0]?.mesh.id
 
   const parts = asset.meshes.map<JewelryMeshClassification>((mesh) => {
     const text = textForMesh(mesh, asset)
@@ -58,13 +91,34 @@ export function classifyJewelryAsset(
     }
 
     if (includesAny(text, STONE_WORDS)) {
-      if (includesAny(text, ACCENT_WORDS) || mesh.id !== largestStoneId) {
-        reasons.push('gemstone-like name/material and smaller than the primary stone candidate')
-        return { meshId: mesh.id, meshName: mesh.name, classification: 'ACCENT_STONE', confidence: 0.88, reasons }
+      const shapeCompactness = compactness(mesh)
+      const stretched = elongation(mesh)
+
+      if (mesh.id === centerStoneId) {
+        reasons.push(`compact gemstone geometry (${Math.round(shapeCompactness * 100)}% compactness) ranks highest as the dominant stone`)
+        if (mesh.name.trim().toLowerCase() === 'diamond') reasons.push('mesh name directly identifies a diamond')
+        return {
+          meshId: mesh.id,
+          meshName: mesh.name,
+          classification: 'CENTER_STONE',
+          confidence: Math.min(0.97, 0.72 + shapeCompactness * 0.22),
+          reasons,
+        }
       }
 
-      reasons.push('gemstone-like name/material and largest gemstone candidate')
-      return { meshId: mesh.id, meshName: mesh.name, classification: 'CENTER_STONE', confidence: 0.94, reasons }
+      if (stretched > 2.2) {
+        reasons.push(`gemstone mesh is spatially distributed/elongated (${stretched.toFixed(1)}× aspect), consistent with pavé or accent stones`)
+      } else {
+        reasons.push('gemstone-like mesh ranks below the dominant compact center-stone candidate')
+      }
+
+      return {
+        meshId: mesh.id,
+        meshName: mesh.name,
+        classification: 'ACCENT_STONE',
+        confidence: stretched > 2.2 ? 0.93 : 0.82,
+        reasons,
+      }
     }
 
     if (includesAny(text, METAL_WORDS)) {
@@ -72,7 +126,7 @@ export function classifyJewelryAsset(
       return { meshId: mesh.id, meshName: mesh.name, classification: 'METAL', confidence: 0.9, reasons }
     }
 
-    reasons.push('insufficient naming/material evidence')
+    reasons.push('insufficient naming/material/geometry evidence')
     return { meshId: mesh.id, meshName: mesh.name, classification: 'UNKNOWN', confidence: 0.35, reasons }
   })
 
