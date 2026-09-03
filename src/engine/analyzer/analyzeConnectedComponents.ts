@@ -6,6 +6,7 @@ export interface GeometryComponentInfo {
   triangleCount: number
   dimensions: readonly [number, number, number]
   center: readonly [number, number, number]
+  worldCenter: readonly [number, number, number]
   compactness: number
   elongation: number
 }
@@ -34,7 +35,7 @@ function componentShape(geometry: BufferGeometry, vertices: number[]) {
   const smallest = dims[2] || 0
   const compactness = largest > 0 && middle > 0 ? Math.min(1, (middle / largest) * 0.7 + (smallest / middle) * 0.3) : 0
   const elongation = middle > 0 ? largest / middle : Number.POSITIVE_INFINITY
-  return { dimensions: [size.x, size.y, size.z] as const, center: [center.x, center.y, center.z] as const, compactness, elongation }
+  return { dimensions: [size.x, size.y, size.z] as const, center, compactness, elongation }
 }
 
 export function analyzeMeshConnectedComponents(mesh: Mesh): MeshComponentAnalysis {
@@ -85,13 +86,22 @@ export function analyzeMeshConnectedComponents(mesh: Mesh): MeshComponentAnalysi
     if (component >= 0) trianglesPerComponent[component]++
   }
 
+  mesh.updateWorldMatrix(true, false)
   const components = vertexComponents
-    .map((vertices, componentIndex) => ({
-      index: componentIndex,
-      vertexCount: vertices.length,
-      triangleCount: trianglesPerComponent[componentIndex],
-      ...componentShape(geometry, vertices),
-    }))
+    .map((vertices, componentIndex) => {
+      const shape = componentShape(geometry, vertices)
+      const worldCenter = mesh.localToWorld(shape.center.clone())
+      return {
+        index: componentIndex,
+        vertexCount: vertices.length,
+        triangleCount: trianglesPerComponent[componentIndex],
+        dimensions: shape.dimensions,
+        center: [shape.center.x, shape.center.y, shape.center.z] as const,
+        worldCenter: [worldCenter.x, worldCenter.y, worldCenter.z] as const,
+        compactness: shape.compactness,
+        elongation: shape.elongation,
+      }
+    })
     .sort((a, b) => b.triangleCount - a.triangleCount)
 
   return { meshId: mesh.uuid, meshName: mesh.name, componentCount: components.length, components }
