@@ -5,9 +5,11 @@ import { Box3, Color, Mesh, Vector3, type Material } from 'three'
 import { readJewelryScene, type JewelryAssetReadResult } from '../../engine/loaders'
 import { classifyJewelryAsset } from '../../engine/analyzer/classifyJewelryAsset'
 
+const LAB_BUILD = 'v1.2'
+
 const MODELS = [
-  { label: 'Diamond Ring Candidate', url: '/models/diamond_ring_candidate_blender.glb' },
-  { label: 'Solitaire Diamond Ring', url: '/models/solitar_diamond_ring.glb' },
+  { label: 'Ring Candidate', url: '/models/diamond_ring_candidate_blender.glb' },
+  { label: 'Solitaire Ring', url: '/models/solitar_diamond_ring.glb' },
 ] as const
 
 function JewelryModel({
@@ -84,20 +86,37 @@ export function EngineLabPage() {
   return (
     <main style={{ width: '100vw', height: '100vh', background: '#090909', color: '#fff', fontFamily: 'Inter, system-ui, sans-serif' }}>
       <div style={{ position: 'absolute', zIndex: 10, top: 18, left: 20 }}>
-        <div style={{ fontSize: 13, letterSpacing: '0.18em', fontWeight: 700 }}>AMES ENGINE LAB</div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <div style={{ fontSize: 13, letterSpacing: '0.18em', fontWeight: 700 }}>AMES ENGINE LAB</div>
+          <div style={{ fontSize: 9, opacity: 0.45 }}>{LAB_BUILD}</div>
+        </div>
         <div style={{ marginTop: 6, fontSize: 12, opacity: 0.65 }}>
           {report ? `${report.summary.meshCount} meshes · ${report.summary.materialCount} materials · ${report.summary.triangleCount.toLocaleString()} triangles` : 'Reading jewelry asset…'}
         </div>
         <div style={{ marginTop: 4, fontSize: 11, opacity: 0.45 }}>Drag to rotate · scroll to zoom · right-drag to pan</div>
-        <select
-          value={modelUrl}
-          onChange={(event) => changeModel(event.target.value)}
-          style={{ marginTop: 10, background: '#151515', color: '#fff', border: '1px solid #333', borderRadius: 8, padding: '8px 10px', fontSize: 11 }}
-        >
-          {MODELS.map((model) => (
-            <option key={model.url} value={model.url}>{model.label}</option>
-          ))}
-        </select>
+        <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+          {MODELS.map((model) => {
+            const active = modelUrl === model.url
+            return (
+              <button
+                key={model.url}
+                onClick={() => changeModel(model.url)}
+                style={{
+                  border: active ? '1px solid #d6b76b' : '1px solid #333',
+                  borderRadius: 8,
+                  padding: '8px 11px',
+                  background: active ? '#201c12' : '#151515',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  fontWeight: active ? 700 : 500,
+                }}
+              >
+                {model.label}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {analysis && (
