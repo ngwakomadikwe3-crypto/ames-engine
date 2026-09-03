@@ -6,8 +6,9 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { readJewelryScene, type JewelryAssetReadResult } from '../../engine/loaders'
 import { classifyJewelryAsset } from '../../engine/analyzer/classifyJewelryAsset'
 import { createJewelryMaterialAssignmentPlan } from '../../engine/materials/assignJewelryMaterials'
+import { createJewelryMetalMaterial } from '../../engine/materials/createJewelryMetalMaterial'
 
-const LAB_BUILD = 'v1.4'
+const LAB_BUILD = 'v1.5'
 
 const MODELS = [
   { label: 'Ring Candidate', url: '/models/diamond_ring_candidate_blender.glb' },
@@ -45,6 +46,35 @@ function JewelryModel({
   }, [url])
 
   const report = useMemo(() => (scene ? readJewelryScene(scene) : null), [scene])
+  const analysis = useMemo(() => (report ? classifyJewelryAsset(report) : null), [report])
+  const materialPlan = useMemo(
+    () => (report && analysis ? createJewelryMaterialAssignmentPlan(report, analysis) : null),
+    [analysis, report],
+  )
+
+  useEffect(() => {
+    if (!scene || !materialPlan) return
+
+    const metalMeshIds = new Set(
+      materialPlan.assignments
+        .filter((assignment) => assignment.role === 'JEWELRY_METAL')
+        .map((assignment) => assignment.meshId),
+    )
+    const restores: Array<() => void> = []
+
+    scene.traverse((object) => {
+      if (!(object instanceof Mesh) || !metalMeshIds.has(object.uuid)) return
+      const originalMaterial = object.material
+      const amesMetal = createJewelryMetalMaterial()
+      object.material = amesMetal
+      restores.push(() => {
+        object.material = originalMaterial
+        amesMetal.dispose()
+      })
+    })
+
+    return () => restores.forEach((restore) => restore())
+  }, [materialPlan, scene])
 
   useEffect(() => {
     if (!scene || !report) return
@@ -133,6 +163,7 @@ export function EngineLabPage() {
       {analysis && materialPlan && (
         <aside style={{ position: 'absolute', zIndex: 20, top: 18, right: 20, width: 330, maxHeight: 'calc(100vh - 36px)', overflowY: 'auto', padding: 16, border: '1px solid #2b2b2b', borderRadius: 12, background: 'rgba(14,14,14,0.92)', backdropFilter: 'blur(12px)' }}>
           <div style={{ fontSize: 11, letterSpacing: '0.16em', fontWeight: 700, opacity: 0.65 }}>AMES ANALYSIS + MATERIAL PLAN</div>
+          <div style={{ marginTop: 6, fontSize: 9, color: '#d6b76b' }}>v1.5 executes JEWELRY_METAL only</div>
           <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
             {analysis.parts.map((part) => {
               const assignment = materialPlan.assignments.find((item) => item.meshId === part.meshId)
