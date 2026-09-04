@@ -2,9 +2,9 @@ import { Canvas, useThree } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { Box3, Group, Mesh, MeshBasicMaterial, Vector3 } from 'three'
-import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
-const MODEL_URL = '/models/jewellry_ring_5.obj'
+const MODEL_URL = '/models/benchmark_02.glb'
 const COLORS = { diamond: '#ffffff', prong: '#ff5ca8', metal: '#d6a84b' }
 
 type Counts = { diamonds: number; prongs: number; metal: number; total: number }
@@ -43,8 +43,9 @@ function BenchmarkModel({ onCounts }: { onCounts: (counts: Counts) => void }) {
 
   useEffect(() => {
     let cancelled = false
-    new OBJLoader().load(MODEL_URL, loaded => {
+    new GLTFLoader().load(MODEL_URL, gltf => {
       if (cancelled) return
+      const loaded = gltf.scene
       const counts: Counts = { diamonds: 0, prongs: 0, metal: 0, total: 0 }
       loaded.traverse(child => {
         if (!(child instanceof Mesh)) return
@@ -58,7 +59,7 @@ function BenchmarkModel({ onCounts }: { onCounts: (counts: Counts) => void }) {
       setObject(loaded)
       onCounts(counts)
       requestAnimationFrame(() => fitCamera(camera, controls, loaded))
-    }, undefined, error => console.error('Benchmark 02 OBJ load failed', error))
+    }, undefined, error => console.error('Benchmark 02 GLB load failed', error))
     return () => { cancelled = true }
   }, [camera, controls, materials, onCounts])
 
@@ -71,9 +72,9 @@ export function EngineLabPage() {
   return <main style={{ width:'100vw', height:'100vh', background:'#090909', color:'#fff', fontFamily:'Inter,system-ui,sans-serif' }}>
     <div style={{ position:'absolute', zIndex:10, top:18, left:20 }}>
       <strong style={{ fontSize:13, letterSpacing:'.18em' }}>AMES ENGINE LAB</strong>
-      <span style={{ fontSize:9, opacity:.45, marginLeft:8 }}>Benchmark 02</span>
+      <span style={{ fontSize:9, opacity:.45, marginLeft:8 }}>Benchmark 02 · GLB</span>
       <div style={{ marginTop:8, fontSize:12, opacity:.7 }}>Double Halo Ring · direct semantic verification</div>
-      <div style={{ marginTop:4, fontSize:10, color:'#9db7d5' }}>No guessing · no scene graph · names from the source OBJ only</div>
+      <div style={{ marginTop:4, fontSize:10, color:'#9db7d5' }}>Clean GLB pipeline · source names only · no scene-graph guessing</div>
     </div>
 
     <aside style={{ position:'absolute', zIndex:20, top:18, right:20, width:310, padding:16, border:'1px solid #2b2b2b', borderRadius:12, background:'rgba(14,14,14,.94)' }}>
@@ -85,7 +86,7 @@ export function EngineLabPage() {
         <Row color={COLORS.metal} label="METAL STRUCTURE" value={counts?.metal} expected="remaining meshes" />
       </div>
       <div style={{ marginTop:12, paddingTop:10, borderTop:'1px solid #292929', fontSize:10, opacity:.65 }}>Meshes loaded: <strong>{counts?.total ?? '…'}</strong></div>
-      <div style={{ marginTop:8, fontSize:9, lineHeight:1.5, opacity:.5 }}>White = diamonds · pink = prongs · gold = structural metal. This screen intentionally applies no photorealistic materials.</div>
+      <div style={{ marginTop:8, fontSize:9, lineHeight:1.5, opacity:.5 }}>White = diamonds · pink = prongs · gold = structural metal. No photorealistic materials yet.</div>
     </aside>
 
     <Canvas camera={{ fov:42, position:[4,3,4] }} dpr={[1,1.5]}>
