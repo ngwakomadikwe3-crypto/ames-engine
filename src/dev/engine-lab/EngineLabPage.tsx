@@ -1,16 +1,104 @@
 import { Canvas, useThree } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { Box3, MeshBasicMaterial, Vector3 } from 'three'
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
-import { readJewelryScene, type JewelryAssetReadResult } from '../../engine/loaders'
-import { analyzeSceneConnectedComponents, type MeshComponentAnalysis } from '../../engine/analyzer/analyzeConnectedComponents'
-import { analyzeJewelryRelationships } from '../../engine/scene-graph/analyzeJewelryRelationships'
-import { disposeJewelryComponentSceneGraph, extractJewelryComponentSceneGraph, type JewelryComponentSceneGraph } from '../../engine/scene-graph/extractComponentNodes'
-const LAB_BUILD='Scene Graph v0.3'
-const MODELS=[{label:'Ring Candidate',url:'/models/diamond_ring_candidate_blender.glb'},{label:'Solitaire Ring',url:'/models/solitar_diamond_ring.glb'}] as const
-const colors={SHANK:'#d6a84b',CROWN_HEAD:'#ff7bbd',CROWN_CANDIDATE:'#ffffff',OTHER:'#555'}
-function fitCamera(camera:any,controls:any,box:Box3){if(box.isEmpty())return;const center=box.getCenter(new Vector3()),size=box.getSize(new Vector3()),radius=Math.max(size.x,size.y,size.z,.05),distance=Math.max(radius*2.7,.3);camera.position.set(center.x+distance,center.y+distance*.55,center.z+distance);camera.near=Math.max(distance/1000,.0001);camera.far=Math.max(distance*100,100);camera.updateProjectionMatrix();if(controls){controls.target.copy(center);controls.update()}else camera.lookAt(center)}
-function Extracted({graph,relationships,mode,candidateId}:{graph:JewelryComponentSceneGraph;relationships:ReturnType<typeof analyzeJewelryRelationships>;mode:'ALL'|'SHANK'|'CROWN';candidateId?:string}){const camera=useThree(s=>s.camera),controls=useThree(s=>(s as any).controls);const mats=useMemo(()=>Object.fromEntries(Object.entries(colors).map(([k,c])=>[k,new MeshBasicMaterial({color:c})])),[]);useEffect(()=>()=>Object.values(mats).forEach((m:any)=>m.dispose()),[mats]);const nodeMap=useMemo(()=>new Map(relationships.nodes.map(n=>[n.id,n])),[relationships]);const shown=graph.nodes.filter(node=>candidateId?node.id===candidateId:mode==='SHANK'?relationships.shankNodes.some(n=>n.id===node.id):mode==='CROWN'?relationships.crownHeadNodes.some(n=>n.id===node.id):true);useEffect(()=>{if(!shown.length)return;const box=new Box3();box.makeEmpty();shown.forEach(node=>{const b=node.geometry.boundingBox?.clone()??new Box3().setFromBufferAttribute(node.geometry.getAttribute('position'));box.union(b.applyMatrix4(node.worldMatrix))});fitCamera(camera,controls,box)},[candidateId,mode,graph,relationships]);return <group>{shown.map(node=>{const info=nodeMap.get(node.id);const region=candidateId?'CROWN_CANDIDATE':info?.region??'OTHER';return <mesh key={node.id} geometry={node.geometry} material={(mats as any)[region]} matrix={node.worldMatrix} matrixAutoUpdate={false}/>})}</group>}
-function Loader({url,onRead,onComponents,onGraph}:{url:string;onRead:(r:JewelryAssetReadResult)=>void;onComponents:(v:MeshComponentAnalysis[])=>void;onGraph:(v:JewelryComponentSceneGraph)=>void}){const [scene,setScene]=useState<THREE.Group|null>(null);useEffect(()=>{let dead=false;setScene(null);new GLTFLoader().load(url,g=>!dead&&setScene(g.scene),undefined,console.error);return()=>{dead=true}},[url]);const report=useMemo(()=>scene?readJewelryScene(scene):null,[scene]),components=useMemo(()=>scene?analyzeSceneConnectedComponents(scene):[],[scene]),graph=useMemo(()=>scene?extractJewelryComponentSceneGraph(scene):null,[scene]);useEffect(()=>{if(scene)onComponents(components)},[components,scene,onComponents]);useEffect(()=>{if(!graph)return;onGraph(graph);return()=>disposeJewelryComponentSceneGraph(graph)},[graph,onGraph]);useEffect(()=>{if(report)onRead(report)},[report,onRead]);return null}
-export function EngineLabPage(){const[modelUrl,setModelUrl]=useState<string>(MODELS[1].url),[report,setReport]=useState<JewelryAssetReadResult|null>(null),[components,setComponents]=useState<MeshComponentAnalysis[]>([]),[graph,setGraph]=useState<JewelryComponentSceneGraph|null>(null),[mode,setMode]=useState<'ALL'|'SHANK'|'CROWN'>('ALL'),[candidateIndex,setCandidateIndex]=useState<number|null>(null);const relationships=useMemo(()=>graph?analyzeJewelryRelationships(graph):null,[graph]),candidates=relationships?.centerStoneCandidates??[],candidateId=candidateIndex===null?undefined:candidates[candidateIndex]?.id;const reset=(url:string)=>{setModelUrl(url);setReport(null);setComponents([]);setGraph(null);setMode('ALL');setCandidateIndex(null)};const button=(active:boolean)=>({padding:'7px 10px',borderRadius:7,border:active?'1px solid #fff':'1px solid #333',background:'#151515',color:'#fff'});return <main style={{width:'100vw',height:'100vh',background:'#090909',color:'#fff',fontFamily:'Inter,system-ui,sans-serif'}}><div style={{position:'absolute',zIndex:10,top:18,left:20,maxWidth:720}}><strong style={{fontSize:13,letterSpacing:'.18em'}}>AMES ENGINE LAB</strong><span style={{fontSize:9,opacity:.45,marginLeft:8}}>{LAB_BUILD}</span><div style={{marginTop:7,fontSize:12,opacity:.65}}>{report?`${report.summary.meshCount} source meshes · ${report.summary.triangleCount.toLocaleString()} triangles`:'Reading…'}</div><div style={{marginTop:4,fontSize:11,color:'#9db7d5'}}>{graph&&relationships?`${graph.nodes.length} nodes · ${relationships.shankNodes.length} shank excluded · ${relationships.crownHeadNodes.length} crown/head nodes · ${candidates.length} stone candidates`:'Segmenting structure…'}</div><div style={{marginTop:12,display:'flex',gap:8}}>{MODELS.map(m=><button key={m.url} onClick={()=>reset(m.url)} style={button(modelUrl===m.url)}>{m.label}</button>)}</div><div style={{marginTop:14,fontSize:9,letterSpacing:'.14em',opacity:.55}}>STRUCTURAL SEGMENTATION</div><div style={{marginTop:7,display:'flex',gap:7}}><button onClick={()=>{setMode('ALL');setCandidateIndex(null)}} style={button(mode==='ALL'&&candidateIndex===null)}>ALL</button><button onClick={()=>{setMode('SHANK');setCandidateIndex(null)}} style={button(mode==='SHANK')}>SHANK</button><button onClick={()=>{setMode('CROWN');setCandidateIndex(null)}} style={button(mode==='CROWN')}>CROWN / HEAD</button></div><div style={{marginTop:14,fontSize:9,letterSpacing:'.14em',opacity:.55}}>CENTER-STONE SEARCH — SHANK EXCLUDED</div><div style={{marginTop:7,display:'flex',gap:7,flexWrap:'wrap'}}>{candidates.map((_,i)=><button key={i} onClick={()=>setCandidateIndex(i)} style={button(candidateIndex===i)}>CANDIDATE {i+1}</button>)}</div><div style={{marginTop:9,fontSize:9,color:'#9db7d5'}}>v0.3 first segments structure. Selecting any candidate now auto-fits the camera.</div></div><aside style={{position:'absolute',zIndex:20,top:18,right:20,width:340,padding:16,border:'1px solid #2b2b2b',borderRadius:12,background:'rgba(14,14,14,.94)'}}><div style={{fontSize:11,letterSpacing:'.16em',fontWeight:700,opacity:.65}}>AMES STRUCTURAL INTELLIGENCE</div><div style={{marginTop:6,fontSize:9,color:'#d6b76b'}}>v0.3 · segment before semantics</div>{relationships&&<><div style={{marginTop:12,padding:10,border:'1px solid #2d2d2d',borderRadius:9,background:'#151515',fontSize:10,lineHeight:1.7}}>Ring axis: {relationships.ringAxis.map(v=>v.toFixed(2)).join(', ')}<br/>Crown: {relationships.crownDirection.map(v=>v.toFixed(2)).join(', ')}<br/>Shank excluded: <strong>{relationships.shankNodes.length}</strong><br/>Crown/head pool: <strong>{relationships.crownHeadNodes.length}</strong></div><div style={{marginTop:10,display:'grid',gap:6,maxHeight:'55vh',overflow:'auto'}}>{candidates.map((c,i)=><button key={c.id} onClick={()=>setCandidateIndex(i)} style={{...button(candidateIndex===i),textAlign:'left'}}><strong>Candidate {i+1}</strong><div style={{fontSize:9,opacity:.55,marginTop:3}}>size {c.size.toFixed(3)} · crown {c.crownScore.toFixed(2)} · local neighbors {c.neighbors}</div></button>)}</div></>}</aside><Canvas camera={{fov:42,position:[4,3,4]}} dpr={[1,1.5]}><color attach="background" args={['#090909']}/><Suspense fallback={null}><Loader key={modelUrl} url={modelUrl} onRead={setReport} onComponents={setComponents} onGraph={setGraph}/>{graph&&relationships&&<Extracted graph={graph} relationships={relationships} mode={mode} candidateId={candidateId}/>}</Suspense><OrbitControls makeDefault enableDamping dampingFactor={.07}/></Canvas></main>}
+import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Box3, Group, Mesh, MeshBasicMaterial, Vector3 } from 'three'
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
+
+const MODEL_URL = '/models/jewellry_ring_5.obj'
+const COLORS = { diamond: '#ffffff', prong: '#ff5ca8', metal: '#d6a84b' }
+
+type Counts = { diamonds: number; prongs: number; metal: number; total: number }
+
+function classify(name: string) {
+  const n = name.toLowerCase()
+  if (n.includes('diamond_round')) return 'diamond' as const
+  if (n.includes('prong_on_surface')) return 'prong' as const
+  return 'metal' as const
+}
+
+function fitCamera(camera: any, controls: any, object: Group) {
+  const box = new Box3().setFromObject(object)
+  if (box.isEmpty()) return
+  const center = box.getCenter(new Vector3())
+  const size = box.getSize(new Vector3())
+  const radius = Math.max(size.x, size.y, size.z, 0.05)
+  const distance = radius * 1.8
+  camera.position.set(center.x + distance, center.y + distance * 0.65, center.z + distance)
+  camera.near = Math.max(distance / 1000, 0.001)
+  camera.far = Math.max(distance * 100, 100)
+  camera.updateProjectionMatrix()
+  if (controls) { controls.target.copy(center); controls.update() }
+  else camera.lookAt(center)
+}
+
+function BenchmarkModel({ onCounts }: { onCounts: (counts: Counts) => void }) {
+  const [object, setObject] = useState<Group | null>(null)
+  const camera = useThree(s => s.camera)
+  const controls = useThree(s => (s as any).controls)
+  const materials = useMemo(() => ({
+    diamond: new MeshBasicMaterial({ color: COLORS.diamond }),
+    prong: new MeshBasicMaterial({ color: COLORS.prong }),
+    metal: new MeshBasicMaterial({ color: COLORS.metal }),
+  }), [])
+
+  useEffect(() => {
+    let cancelled = false
+    new OBJLoader().load(MODEL_URL, loaded => {
+      if (cancelled) return
+      const counts: Counts = { diamonds: 0, prongs: 0, metal: 0, total: 0 }
+      loaded.traverse(child => {
+        if (!(child instanceof Mesh)) return
+        const role = classify(child.name)
+        child.material = materials[role]
+        counts.total++
+        if (role === 'diamond') counts.diamonds++
+        else if (role === 'prong') counts.prongs++
+        else counts.metal++
+      })
+      setObject(loaded)
+      onCounts(counts)
+      requestAnimationFrame(() => fitCamera(camera, controls, loaded))
+    }, undefined, error => console.error('Benchmark 02 OBJ load failed', error))
+    return () => { cancelled = true }
+  }, [camera, controls, materials, onCounts])
+
+  useEffect(() => () => Object.values(materials).forEach(m => m.dispose()), [materials])
+  return object ? <primitive object={object} /> : null
+}
+
+export function EngineLabPage() {
+  const [counts, setCounts] = useState<Counts | null>(null)
+  return <main style={{ width:'100vw', height:'100vh', background:'#090909', color:'#fff', fontFamily:'Inter,system-ui,sans-serif' }}>
+    <div style={{ position:'absolute', zIndex:10, top:18, left:20 }}>
+      <strong style={{ fontSize:13, letterSpacing:'.18em' }}>AMES ENGINE LAB</strong>
+      <span style={{ fontSize:9, opacity:.45, marginLeft:8 }}>Benchmark 02</span>
+      <div style={{ marginTop:8, fontSize:12, opacity:.7 }}>Double Halo Ring · direct semantic verification</div>
+      <div style={{ marginTop:4, fontSize:10, color:'#9db7d5' }}>No guessing · no scene graph · names from the source OBJ only</div>
+    </div>
+
+    <aside style={{ position:'absolute', zIndex:20, top:18, right:20, width:310, padding:16, border:'1px solid #2b2b2b', borderRadius:12, background:'rgba(14,14,14,.94)' }}>
+      <div style={{ fontSize:11, letterSpacing:'.16em', fontWeight:700, opacity:.65 }}>BENCHMARK 02 VERIFICATION</div>
+      <div style={{ marginTop:6, fontSize:9, color:'#d6b76b' }}>LOAD → IDENTIFY → COLOR-CODE → VERIFY</div>
+      <div style={{ marginTop:14, display:'grid', gap:8 }}>
+        <Row color={COLORS.diamond} label="DIAMOND_ROUND" value={counts?.diamonds} expected="51 expected" />
+        <Row color={COLORS.prong} label="PRONG_ON_SURFACE" value={counts?.prongs} expected="100 expected" />
+        <Row color={COLORS.metal} label="METAL STRUCTURE" value={counts?.metal} expected="remaining meshes" />
+      </div>
+      <div style={{ marginTop:12, paddingTop:10, borderTop:'1px solid #292929', fontSize:10, opacity:.65 }}>Meshes loaded: <strong>{counts?.total ?? '…'}</strong></div>
+      <div style={{ marginTop:8, fontSize:9, lineHeight:1.5, opacity:.5 }}>White = diamonds · pink = prongs · gold = structural metal. This screen intentionally applies no photorealistic materials.</div>
+    </aside>
+
+    <Canvas camera={{ fov:42, position:[4,3,4] }} dpr={[1,1.5]}>
+      <color attach="background" args={['#090909']} />
+      <Suspense fallback={null}><BenchmarkModel onCounts={setCounts} /></Suspense>
+      <OrbitControls makeDefault enableDamping dampingFactor={0.07} />
+    </Canvas>
+  </main>
+}
+
+function Row({ color, label, value, expected }: { color:string; label:string; value?:number; expected:string }) {
+  return <div style={{ padding:10, border:'1px solid #2d2d2d', borderRadius:8, background:'#151515' }}>
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}><strong style={{ color }}>{label}</strong><strong>{value ?? '…'}</strong></div>
+    <div style={{ marginTop:4, fontSize:9, opacity:.45 }}>{expected}</div>
+  </div>
+}
