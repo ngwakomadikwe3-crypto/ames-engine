@@ -1,23 +1,119 @@
 import { Canvas, useThree } from '@react-three/fiber'
-import { Environment, Lightformer, OrbitControls } from '@react-three/drei'
+import { Environment, OrbitControls, useEnvironment } from '@react-three/drei'
 import { Suspense, useEffect, useMemo, useState } from 'react'
-import { ACESFilmicToneMapping, Box3, Color, Group, Mesh, MeshPhysicalMaterial, Vector3 } from 'three'
+import { ACESFilmicToneMapping, Box3, BufferGeometry, Mesh, Quaternion, Vector3 } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
-import { createJewelryMetalMaterial } from '../../engine/materials/createJewelryMetalMaterial'
-import { createAmesDiamondMaterial } from '../../engine/materials/AmesDiamondMaterial'
+import { DiamondMaterial } from '../../engine/materials/DiamondMaterial'
 
-const MODEL_URL='/models/benchmark_02.glb'
-type Counts={centerDiamond:number;accentDiamonds:number;prongs:number;metal:number;total:number}
-type Loaded={root:Group;center:Mesh|null}
-function roleFromName(name:string){const n=name.toLowerCase();if(n.includes('diamond_round'))return'diamond' as const;if(n.includes('prong_on_surface'))return'prong' as const;return'metal' as const}
-function volume(m:Mesh){m.updateWorldMatrix(true,false);const s=new Box3().setFromObject(m).getSize(new Vector3());return Math.abs(s.x*s.y*s.z)}
-function fit(camera:any,controls:any,o:Group){const b=new Box3().setFromObject(o);if(b.isEmpty())return;const c=b.getCenter(new Vector3()),s=b.getSize(new Vector3()),r=Math.max(s.x,s.y,s.z,.05),d=r*1.72;camera.position.set(c.x+d,c.y+d*.58,c.z+d);camera.near=Math.max(d/1000,.001);camera.far=Math.max(d*100,100);camera.updateProjectionMatrix();controls?.target.copy(c);controls?.update()}
-function Studio(){return <><Environment resolution={384} background={false}><group rotation={[0,.35,0]}><Lightformer form="rect" intensity={8} color="white" scale={[7,2.2,1]} position={[0,5,-4]} rotation={[Math.PI/2,0,0]}/><Lightformer form="rect" intensity={6} color="#fff4dc" scale={[3,7,1]} position={[5,1,1]} rotation={[0,-Math.PI/2,0]}/><Lightformer form="rect" intensity={5} color="#e5f1ff" scale={[3,6,1]} position={[-5,1,0]} rotation={[0,Math.PI/2,0]}/><Lightformer form="rect" intensity={9} color="white" scale={[2,5,1]} position={[0,1,5]} rotation={[0,Math.PI,0]}/><Lightformer form="ring" intensity={5} color="white" scale={3} position={[0,4,2]} rotation={[Math.PI/2,0,0]}/></group></Environment><ambientLight intensity={.08}/><directionalLight position={[4,7,5]} intensity={1.7}/></>}
-function Model({onCounts}:{onCounts:(c:Counts)=>void}){
- const [loaded,setLoaded]=useState<Loaded|null>(null);const camera=useThree(s=>s.camera),controls=useThree(s=>(s as any).controls)
- const mats=useMemo(()=>{const accent=new MeshPhysicalMaterial({name:'AMES Accent Diamond',color:new Color('#fff'),metalness:0,roughness:.035,transmission:.82,thickness:.28,ior:2.417,clearcoat:1,clearcoatRoughness:.01,attenuationColor:new Color('#f8fbff'),attenuationDistance:12,dispersion:.025,envMapIntensity:2.4});const gold=createJewelryMetalMaterial('18K_YELLOW_GOLD',{color:'#d5a43a',roughness:.17,metalness:1});gold.envMapIntensity=2.6;const center=createAmesDiamondMaterial();return{accent,gold,center}},[])
- useEffect(()=>{let dead=false;new GLTFLoader().load(MODEL_URL,g=>{if(dead)return;const root=g.scene,ds:Mesh[]=[],ps:Mesh[]=[],ms:Mesh[]=[];root.traverse(ch=>{if(!(ch instanceof Mesh))return;const r=roleFromName(ch.name);if(r==='diamond')ds.push(ch);else if(r==='prong')ps.push(ch);else ms.push(ch)});const center=[...ds].sort((a,b)=>volume(b)-volume(a))[0]??null;ds.filter(m=>m!==center).forEach(m=>m.material=mats.accent);[...ps,...ms].forEach(m=>m.material=mats.gold);if(center)center.material=mats.center;setLoaded({root,center});onCounts({centerDiamond:center?1:0,accentDiamonds:ds.length-(center?1:0),prongs:ps.length,metal:ms.length,total:ds.length+ps.length+ms.length});requestAnimationFrame(()=>fit(camera,controls,root))},undefined,e=>console.error('Stage 4 load failed',e));return()=>{dead=true}},[camera,controls,mats,onCounts])
- useEffect(()=>()=>Object.values(mats).forEach(m=>m.dispose()),[mats]);return loaded?<primitive object={loaded.root}/>:null
+const MODEL_URL = '/models/benchmark_02.glb'
+
+type CenterStone = {
+  geometry: BufferGeometry
+  position: Vector3
+  quaternion: Quaternion
+  scale: Vector3
+  sourceName: string
 }
-export function EngineLabPage(){const[counts,setCounts]=useState<Counts|null>(null);return <main style={{width:'100vw',height:'100vh',background:'#090909',color:'#fff',fontFamily:'Inter,system-ui,sans-serif'}}><div style={{position:'absolute',zIndex:10,top:18,left:20}}><strong style={{fontSize:13,letterSpacing:'.18em'}}>AMES ENGINE LAB</strong><span style={{fontSize:9,opacity:.45,marginLeft:8}}>Benchmark 02 · Render Stage 4</span><div style={{marginTop:8,fontSize:12,opacity:.72}}>AMES Diamond Shader v0.1 · facet-light-return benchmark</div><div style={{marginTop:4,fontSize:10,color:'#a8bdd6'}}>Fresnel + TIR response · brilliant-cut contrast · restrained spectral fire · semantics locked</div></div><aside style={{position:'absolute',zIndex:20,top:18,right:20,width:315,padding:16,border:'1px solid #2b2b2b',borderRadius:12,background:'rgba(12,12,12,.94)'}}><div style={{fontSize:11,letterSpacing:'.16em',fontWeight:700,opacity:.65}}>RENDER STAGE 4</div><div style={{marginTop:6,fontSize:9,color:'#d6b76b'}}>AMES DIAMOND SHADER v0.1</div><div style={{marginTop:14,display:'grid',gap:8}}><Row label="CENTER DIAMOND" value={counts?.centerDiamond} detail="dedicated AMES facet shader"/><Row label="ACCENT DIAMONDS" value={counts?.accentDiamonds} detail="optimized physical optics retained"/><Row label="18K GOLD PRONGS" value={counts?.prongs} detail="semantic role locked"/><Row label="18K GOLD STRUCTURE" value={counts?.metal} detail="semantic role locked"/></div><div style={{marginTop:12,paddingTop:10,borderTop:'1px solid #292929',fontSize:10,opacity:.65}}>Meshes rendered: <strong>{counts?.total??'…'}</strong></div><div style={{marginTop:8,fontSize:9,lineHeight:1.5,opacity:.5}}>Stage 4 stops treating the center stone as generic glass. We are validating diamond-specific light return before adding heavier ray tracing.</div></aside><Canvas camera={{fov:40,position:[4,3,4]}} dpr={[1,1.5]} gl={{antialias:true,toneMapping:ACESFilmicToneMapping,toneMappingExposure:1.08}}><color attach="background" args={['#090909']}/><Studio/><Suspense fallback={null}><Model onCounts={setCounts}/></Suspense><OrbitControls makeDefault enableDamping dampingFactor={.07}/></Canvas></main>}
-function Row({label,value,detail}:{label:string;value?:number;detail:string}){return <div style={{padding:10,border:'1px solid #2d2d2d',borderRadius:8,background:'#151515'}}><div style={{display:'flex',justifyContent:'space-between',gap:12}}><strong>{label}</strong><strong>{value??'…'}</strong></div><div style={{marginTop:4,fontSize:9,opacity:.45}}>{detail}</div></div>}
+
+function roleFromName(name: string) {
+  return name.toLowerCase().includes('diamond_round') ? 'diamond' : 'other'
+}
+
+function volume(mesh: Mesh) {
+  mesh.updateWorldMatrix(true, false)
+  const size = new Box3().setFromObject(mesh).getSize(new Vector3())
+  return Math.abs(size.x * size.y * size.z)
+}
+
+function fitToBox(camera: any, controls: any, box: Box3) {
+  if (box.isEmpty()) return
+  const center = box.getCenter(new Vector3())
+  const size = box.getSize(new Vector3())
+  const radius = Math.max(size.x, size.y, size.z, 0.01)
+  const distance = radius * 2.5
+  camera.position.set(center.x + distance * 0.9, center.y + distance * 0.6, center.z + distance)
+  camera.near = Math.max(distance / 1000, 0.0001)
+  camera.far = Math.max(distance * 100, 100)
+  camera.updateProjectionMatrix()
+  controls?.target.copy(center)
+  controls?.update()
+}
+
+function IsolatedDiamond({ onReady }: { onReady: (name: string) => void }) {
+  const [stone, setStone] = useState<CenterStone | null>(null)
+  const camera = useThree(s => s.camera)
+  const controls = useThree(s => (s as any).controls)
+  const envMap = useEnvironment({ preset: 'studio' })
+
+  useEffect(() => {
+    let cancelled = false
+    new GLTFLoader().load(MODEL_URL, gltf => {
+      if (cancelled) return
+      const diamonds: Mesh[] = []
+      gltf.scene.traverse(child => {
+        if (child instanceof Mesh && roleFromName(child.name) === 'diamond') diamonds.push(child)
+      })
+      const center = [...diamonds].sort((a, b) => volume(b) - volume(a))[0]
+      if (!center) return
+
+      center.updateWorldMatrix(true, false)
+      const box = new Box3().setFromObject(center)
+      const isolated: CenterStone = {
+        geometry: center.geometry,
+        position: center.getWorldPosition(new Vector3()),
+        quaternion: center.getWorldQuaternion(new Quaternion()),
+        scale: center.getWorldScale(new Vector3()),
+        sourceName: center.name,
+      }
+      setStone(isolated)
+      onReady(center.name)
+      requestAnimationFrame(() => fitToBox(camera, controls, box))
+    }, undefined, error => console.error('Center-stone optics benchmark failed to load', error))
+    return () => { cancelled = true }
+  }, [camera, controls, onReady])
+
+  if (!stone) return null
+
+  return <>
+    <Environment map={envMap} background={false} />
+    <mesh geometry={stone.geometry} position={stone.position} quaternion={stone.quaternion} scale={stone.scale}>
+      <DiamondMaterial envMap={envMap} constrained={false} />
+    </mesh>
+  </>
+}
+
+export function EngineLabPage() {
+  const [stoneName, setStoneName] = useState<string | null>(null)
+  const ready = useMemo(() => stoneName !== null, [stoneName])
+
+  return <main style={{ width:'100vw', height:'100vh', background:'#0b0b0d', color:'#fff', fontFamily:'Inter,system-ui,sans-serif' }}>
+    <div style={{ position:'absolute', zIndex:10, top:20, left:22 }}>
+      <strong style={{ fontSize:13, letterSpacing:'.18em' }}>AMES ENGINE LAB</strong>
+      <span style={{ fontSize:9, opacity:.5, marginLeft:8 }}>Optics Benchmark</span>
+      <div style={{ marginTop:9, fontSize:13, opacity:.78 }}>Center Diamond — isolated validation</div>
+      <div style={{ marginTop:5, fontSize:10, color:'#9fb5cf' }}>No ring · no prongs · no gold · no custom shader guessing</div>
+    </div>
+
+    <aside style={{ position:'absolute', zIndex:20, top:20, right:20, width:320, padding:16, border:'1px solid #2b2b2f', borderRadius:12, background:'rgba(13,13,15,.95)' }}>
+      <div style={{ fontSize:11, letterSpacing:'.16em', fontWeight:700, opacity:.68 }}>DIAMOND OPTICS CHECKPOINT</div>
+      <div style={{ marginTop:7, fontSize:9, color:'#d6b76b' }}>PROVEN REFRACTION PATH</div>
+      <div style={{ marginTop:14, padding:11, border:'1px solid #303035', borderRadius:8, background:'#171719' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', gap:12 }}><strong>CENTER STONE</strong><strong>{ready ? 'READY' : '…'}</strong></div>
+        <div style={{ marginTop:5, fontSize:9, opacity:.5 }}>{stoneName ?? 'Finding largest Diamond_Round…'}</div>
+      </div>
+      <div style={{ marginTop:10, padding:11, border:'1px solid #303035', borderRadius:8, background:'#171719', fontSize:10, lineHeight:1.6 }}>
+        Renderer: <strong>MeshRefractionMaterial</strong><br/>
+        Environment: <strong>Studio HDR</strong><br/>
+        IOR: <strong>AMES diamond profile</strong><br/>
+        Multi-bounce: <strong>enabled</strong>
+      </div>
+      <div style={{ marginTop:11, fontSize:9, lineHeight:1.55, opacity:.5 }}>This is a pass/fail checkpoint. If the isolated stone does not look convincingly like a diamond, we stop and change rendering technology instead of tuning another stage.</div>
+    </aside>
+
+    <Canvas camera={{ fov:36, position:[3,2,4] }} dpr={[1,1.5]} gl={{ antialias:true, toneMapping:ACESFilmicToneMapping, toneMappingExposure:1.1 }}>
+      <color attach="background" args={['#0b0b0d']} />
+      <Suspense fallback={null}><IsolatedDiamond onReady={setStoneName} /></Suspense>
+      <OrbitControls makeDefault enableDamping dampingFactor={0.06} />
+    </Canvas>
+  </main>
+}
