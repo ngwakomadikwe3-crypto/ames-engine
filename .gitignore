@@ -5,3 +5,8 @@ dist
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
+
+# AMES raw 3D source assets
+public/models/*.obj
+public/models/*.fbx
+public/models/*.blend
