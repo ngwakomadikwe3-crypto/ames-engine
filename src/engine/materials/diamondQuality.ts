@@ -15,5 +15,5 @@ export function getDiamondQualityProfile(
 ): DiamondQualityProfile {
   return constrained
     ? { bounces: 3, fastChroma: true, aberrationStrength: 0.0025, fresnel: 0.16 }
-    : { bounces: 5, fastChroma: true, aberrationStrength: 0.004, fresnel: 0.18 }
+    : { bounces: 5, fastChroma: true, aberrationStrength: 0.004, fresnel: 0.23 }
 }

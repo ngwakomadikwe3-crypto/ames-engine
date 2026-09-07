@@ -44,8 +44,63 @@ function createFace(index: number) {
   return canvas
 }
 
+function createJewelryStudioFace(index: number) {
+  const { size } = DIAMOND_CALIBRATION.environment
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const context = canvas.getContext('2d')!
+  const background = context.createLinearGradient(0, 0, size, size)
+  background.addColorStop(0, '#181a19')
+  background.addColorStop(0.45, '#303231')
+  background.addColorStop(1, '#555654')
+  context.fillStyle = background
+  context.fillRect(0, 0, size, size)
+
+  const panelLayouts = [
+    [[20, 22, 170, 250], [334, 42, 62, 412], [78, 366, 214, 46]],
+    [[48, 32, 82, 432], [246, 12, 176, 186], [300, 326, 116, 58]],
+    [[10, 74, 256, 74], [318, 26, 74, 432], [118, 310, 176, 74]],
+    [[42, 18, 122, 204], [224, 66, 52, 418], [376, 24, 92, 112]],
+    [[24, 286, 210, 68], [272, 18, 164, 206], [404, 270, 52, 202]],
+    [[66, 24, 64, 424], [198, 44, 238, 62], [286, 316, 132, 82]],
+  ] as const
+  const panels = panelLayouts[index]
+  for (const [x, y, width, height] of panels) {
+    const panel = context.createLinearGradient(x, y, x + width, y + height)
+    panel.addColorStop(0, 'rgba(255, 255, 255, 0)')
+    panel.addColorStop(0.16, index % 2 === 0 ? 'rgba(255, 255, 255, 0.72)' : 'rgba(244, 241, 233, 0.68)')
+    panel.addColorStop(0.5, index % 2 === 0 ? 'rgba(255, 255, 255, 0.98)' : 'rgba(244, 241, 233, 0.92)')
+    panel.addColorStop(0.84, index % 2 === 0 ? 'rgba(255, 255, 255, 0.72)' : 'rgba(244, 241, 233, 0.68)')
+    panel.addColorStop(1, 'rgba(255, 255, 255, 0)')
+    context.fillStyle = panel
+    context.fillRect(x, y, width, height)
+  }
+
+  const bounce = context.createLinearGradient(0, 248, size, 352)
+  bounce.addColorStop(0, 'rgba(150, 152, 149, 0)')
+  bounce.addColorStop(0.5, 'rgba(150, 152, 149, 0.36)')
+  bounce.addColorStop(1, 'rgba(150, 152, 149, 0)')
+  context.fillStyle = bounce
+  context.fillRect(0, 248, size, 104)
+
+  context.fillStyle = 'rgba(8, 9, 9, 0.72)'
+  context.fillRect((index * 83) % 360 + 52, 0, 28, size)
+  context.fillRect((index * 137) % 300 + 96, 224, 152, 44)
+  return canvas
+}
+
 export function createRealtimeCalibrationEnvironment() {
   const texture = new CubeTexture(Array.from({ length: 6 }, (_, index) => createFace(index)))
+  texture.colorSpace = SRGBColorSpace
+  texture.needsUpdate = true
+  return texture
+}
+
+export function createJewelryStudioEnvironment() {
+  const texture = new CubeTexture(
+    Array.from({ length: 6 }, (_, index) => createJewelryStudioFace(index)),
+  )
   texture.colorSpace = SRGBColorSpace
   texture.needsUpdate = true
   return texture
